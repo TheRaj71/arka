@@ -1,5 +1,5 @@
 import "server-only";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { cache } from "react";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -21,33 +21,119 @@ export type Profile = {
   is_active: boolean;
 };
 
-const DEMO_DIRECTOR_PROFILE: Profile = {
-  id: "11111111-1111-1111-1111-111111111111",
-  clerk_user_id: "user_director_demo",
-  full_name: "Priya Sharma (Director)",
-  email: "director@demo.local",
-  role: "director",
-  is_active: true,
-};
-
 /**
- * Get the current user's profile from the database
- * In testing/demo mode without Clerk sign-in, automatically defaults
- * to the Director profile with full system access.
+ * Get the current user's profile from the database.
+ * Syncs automatically with Clerk user session and provisions/links profiles
+ * if the user was just created or webhook hasn't fired yet.
  */
 export const getProfile = cache(async (): Promise<Profile | null> => {
   try {
     const { userId } = await auth();
-    if (!userId) return DEMO_DIRECTOR_PROFILE;
+    if (!userId) return null;
 
-    const { data } = await supabaseAdmin()
+    const db = supabaseAdmin();
+
+    // 1. Check if profile exists by Clerk user ID
+    const { data: existingProfile } = await db
       .from("profiles")
       .select("id, clerk_user_id, full_name, email, role, is_active")
       .eq("clerk_user_id", userId)
       .maybeSingle();
 
-    return (data as Profile) ?? DEMO_DIRECTOR_PROFILE;
-  } catch (_err) {
-    return DEMO_DIRECTOR_PROFILE;
+    if (existingProfile) {
+      return existingProfile as Profile;
+    }
+
+    // 2. Not found: fetch details from Clerk to link or auto-provision
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const email = clerkUser.emailAddresses[0]?.emailAddress ?? null;
+    const fullName =
+      [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+      email ||
+      "Staff Member";
+
+    // Check if an existing profile exists with this email (e.g. seeded user)
+    if (email) {
+      const { data: profileByEmail } = await db
+        .from("profiles")
+        .select("id, clerk_user_id, full_name, email, role, is_active")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (profileByEmail) {
+        await db
+          .from("profiles")
+          .update({
+            clerk_user_id: userId,
+            full_name: fullName,
+          })
+          .eq("id", profileByEmail.id);
+
+        if (profileByEmail.role) {
+          try {
+            await client.users.updateUserMetadata(userId, {
+              publicMetadata: { role: profileByEmail.role },
+            });
+          } catch {
+            // Ignore metadata update error
+          }
+        }
+
+        return {
+          ...profileByEmail,
+          clerk_user_id: userId,
+          full_name: fullName,
+        } as Profile;
+      }
+    }
+
+    // Determine initial role
+    const isBootstrap =
+      Boolean(
+        email &&
+        process.env.BOOTSTRAP_DIRECTOR_EMAIL &&
+        email.toLowerCase() === process.env.BOOTSTRAP_DIRECTOR_EMAIL.toLowerCase()
+      );
+
+    const metaRole = clerkUser.publicMetadata?.role as AppRole | undefined;
+    const initialRole: AppRole | null = isBootstrap ? "director" : (metaRole ?? null);
+
+    const { data: newProfile, error } = await db
+      .from("profiles")
+      .insert({
+        clerk_user_id: userId,
+        full_name: fullName,
+        email,
+        role: initialRole,
+        is_active: true,
+      })
+      .select("id, clerk_user_id, full_name, email, role, is_active")
+      .single();
+
+    if (error) {
+      console.error("Error creating profile for Clerk user:", error);
+      return null;
+    }
+
+    if (initialRole) {
+      try {
+        await client.users.updateUserMetadata(userId, {
+          publicMetadata: { role: initialRole },
+        });
+      } catch {
+        // Ignore metadata update error
+      }
+    }
+
+    return newProfile as Profile;
+  } catch (err: unknown) {
+    // Next.js PPR / Static Prerendering bailout
+    const digest = (err as { digest?: string })?.digest;
+    if (digest === "HANGING_PROMISE_REJECTION" || digest?.startsWith("NEXT_")) {
+      throw err;
+    }
+    console.error("getProfile error:", err);
+    return null;
   }
 });

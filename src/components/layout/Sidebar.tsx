@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { UserButton } from "@clerk/nextjs";
 import {
   LayoutDashboard,
   Users,
@@ -140,9 +141,13 @@ export function Sidebar({ currentRole, userName = "Priya Sharma", userEmail = "d
       <div className="mt-4 pt-3 border-t border-slate-200/60 px-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-600 to-sky-400 flex items-center justify-center text-white font-bold text-sm shadow-xs">
-              {userName.charAt(0)}
-            </div>
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox: "w-9 h-9 shadow-xs",
+                },
+              }}
+            />
             <div className="text-left overflow-hidden">
               <div className="text-xs font-bold text-slate-800 truncate">{userName}</div>
               <div className="text-[10px] font-medium text-slate-500 capitalize">{currentRole}</div>
