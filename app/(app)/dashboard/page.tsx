@@ -1,6 +1,9 @@
 import React from "react";
 import { connection } from "next/server";
 import { getDashboardData } from "@/modules/dashboard/queries";
+import { getProfile } from "@/lib/auth/get-profile";
+import { getPendingRoleUsers } from "@/modules/users/queries";
+import { DirectorPendingApprovals } from "@/components/dashboard/DirectorPendingApprovals";
 import { formatPaise, formatPaiseShorthand, formatDateIST } from "@/lib/formatters";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
@@ -26,7 +29,13 @@ export default async function DashboardPage({
 }) {
   await connection();
   const { range = "today" } = await searchParams;
-  const data = await getDashboardData(range);
+  const [data, profile] = await Promise.all([
+    getDashboardData(range),
+    getProfile(),
+  ]);
+
+  const isDirector = profile?.role === "director";
+  const pendingUsers = isDirector ? await getPendingRoleUsers() : [];
 
   // Revenue & Profit shorthand
   const totalCostBigInt = data.summary.totalRevenuePaise - data.summary.totalProfitPaise;
@@ -65,6 +74,11 @@ export default async function DashboardPage({
           </Link>
         </div>
       </div>
+
+      {/* Role Approval Action Banner for Director */}
+      {isDirector && pendingUsers.length > 0 && (
+        <DirectorPendingApprovals pendingUsers={pendingUsers} />
+      )}
 
       {/* 2. Top Row of 5 StatCards (Revenue, Margin, Jobs, Repairs, Cash) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

@@ -124,6 +124,31 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
       } catch {
         // Ignore metadata update error
       }
+    } else {
+      // Notify all active directors that a new staff member is awaiting role approval
+      try {
+        const { data: directors } = await db
+          .from("profiles")
+          .select("id")
+          .eq("role", "director")
+          .eq("is_active", true);
+
+        if (directors && directors.length > 0) {
+          const notifications = directors.map((d) => ({
+            recipient_id: d.id,
+            type: "role_approval_requested",
+            title: `Staff Role Approval Needed: ${fullName}`,
+            body: `${email || fullName} signed up and is awaiting operational role assignment.`,
+            entity_type: "profile",
+            entity_id: newProfile.id,
+            url: "/settings",
+            severity: "action_required" as const,
+          }));
+          await db.from("notifications").insert(notifications);
+        }
+      } catch (notifyErr) {
+        console.error("Failed to notify directors of pending user:", notifyErr);
+      }
     }
 
     return newProfile as Profile;

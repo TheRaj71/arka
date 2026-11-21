@@ -21,6 +21,7 @@ interface AppShellProps {
   initialRole?: AppRole;
   userName?: string;
   userEmail?: string;
+  unreadNotifications?: number;
 }
 
 export function AppShell({
@@ -28,6 +29,7 @@ export function AppShell({
   initialRole = "director",
   userName = "Priya Sharma",
   userEmail = "director@demo.local",
+  unreadNotifications = 0,
 }: AppShellProps) {
   const [role, setRole] = useState<AppRole>(initialRole);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -60,7 +62,7 @@ export function AppShell({
       {/* 2. Main Content Viewport */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         {/* Top Slim Header (64px) */}
-        <Header userName={userName.split(" ")[0]} />
+        <Header userName={userName.split(" ")[0]} unreadNotifications={unreadNotifications} />
 
         {/* Page Content Container (Max width 1440px, 32px padding desktop) */}
         <main className="flex-1 w-full max-w-[1440px] mx-auto p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">

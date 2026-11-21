@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Search,
   Bell,
@@ -9,6 +10,8 @@ import {
   Type,
   HelpCircle,
   Clock,
+  ArrowRight,
+  ShieldAlert,
 } from "lucide-react";
 import { CommandPalette } from "../shared/CommandPalette";
 
@@ -111,26 +114,39 @@ export function Header({
 
             {/* Notification Drawer Popover */}
             {showNotifications && (
-              <div className="absolute right-0 top-11 w-80 card-surface border border-[var(--border-strong)] shadow-[var(--shadow-dropdown)] p-3 z-30 animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute right-0 top-11 w-80 rounded-[var(--radius-card)] bg-[var(--surface-card)] border border-[var(--border-strong)] shadow-lg p-3 z-30 animate-in fade-in zoom-in-95 duration-100">
                 <div className="flex items-center justify-between pb-2 border-b border-[var(--border-subtle)] text-body-sm font-semibold text-[var(--text-primary)]">
                   <span>Operational Alerts</span>
-                  <span className="text-caption font-mono text-[var(--accent-base)]">2 pending</span>
+                  <span className="text-caption font-mono text-[var(--accent-base)] font-medium">
+                    {unreadNotifications > 0 ? `${unreadNotifications} unread` : "All read"}
+                  </span>
                 </div>
-                <div className="divide-y divide-[var(--border-subtle)] max-h-64 overflow-y-auto">
-                  <div className="py-2.5 text-body-sm">
-                    <div className="font-medium text-[var(--text-primary)]">50% Advance Received</div>
-                    <div className="text-caption text-[var(--text-secondary)]">
-                      Order #ORD-2611-0001 confirmed. Pick-list queued for Warehouse.
+                <div className="py-2 space-y-2 text-body-sm">
+                  {unreadNotifications > 0 ? (
+                    <div className="p-2.5 rounded-[var(--radius-control)] bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 text-amber-900 dark:text-amber-200 text-body-sm flex items-start gap-2">
+                      <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <div className="font-semibold text-body-sm">Action Items Pending</div>
+                        <div className="text-caption text-amber-800 dark:text-amber-300">
+                          Review pending staff approvals & system alerts.
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">14m ago</div>
-                  </div>
-                  <div className="py-2.5 text-body-sm">
-                    <div className="font-medium text-[var(--text-primary)]">Survey Submitted</div>
-                    <div className="text-caption text-[var(--text-secondary)]">
-                      Vikram Patel submitted rooftop survey for Anita Sharma (3.3 kW).
+                  ) : (
+                    <div className="py-4 text-center text-body-sm text-text-secondary">
+                      No new operational alerts.
                     </div>
-                    <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">1h ago</div>
-                  </div>
+                  )}
+                </div>
+                <div className="pt-2 border-t border-[var(--border-subtle)]">
+                  <Link
+                    href="/notifications"
+                    onClick={() => setShowNotifications(false)}
+                    className="w-full h-8 flex items-center justify-center gap-1.5 text-caption font-medium text-[var(--accent-base)] hover:underline rounded-[var(--radius-control)] hover:bg-[var(--surface-subtle)]"
+                  >
+                    <span>Open Notification Center</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 </div>
               </div>
             )}
