@@ -1,0 +1,131 @@
+/* Arka Design System Tokens - Industrial Paper-Like Theme */
+
+:root {
+  /* Typography Scale Variable */
+  --text-scale: 100%;
+
+  /* Neutral Surface Palette (Warm Paper) */
+  --surface-page: #FAFAF9;
+  --surface-card: #FFFFFF;
+  --surface-subtle: #F5F5F4;
+  --surface-hover: #F0EFEA;
+  --surface-active: #E7E5E0;
+  
+  /* Borders (Subtle 1px Architecture) */
+  --border-subtle: #E7E5E4;
+  --border-strong: #D6D3D1;
+  --border-focus: #0F766E;
+
+  /* Typography Colors (High Contrast, WCAG AAA compliant) */
+  --text-primary: #1C1917;
+  --text-secondary: #57534E;
+  --text-muted: #78716C;
+  --text-inverse: #FFFFFF;
+
+  /* Brand Accent: Deep Solar Teal */
+  --accent-base: #0F766E;
+  --accent-hover: #115E59;
+  --accent-active: #134E4A;
+  --accent-subtle: #F0FDFA;
+  --accent-subtle-border: #CCFBF1;
+  --accent-text: #0F766E;
+
+  /* Semantic State Palette */
+  --success-base: #15803D;
+  --success-subtle: #F0FDF4;
+  --success-border: #DCFCE7;
+  --success-text: #166534;
+
+  --warning-base: #B45309;
+  --warning-subtle: #FFFBEB;
+  --warning-border: #FEF3C7;
+  --warning-text: #92400E;
+
+  --danger-base: #B91C1C;
+  --danger-subtle: #FEF2F2;
+  --danger-border: #FEE2E2;
+  --danger-text: #991B1B;
+
+  --info-base: #1D4ED8;
+  --info-subtle: #EFF6FF;
+  --info-border: #DBEAFE;
+  --info-text: #1E40AF;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;   /* standard controls & buttons */
+  --radius-lg: 12px;  /* cards & panels */
+  --radius-xl: 16px;  /* dialogs & drawers */
+  --radius-full: 9999px;
+
+  /* Micro Elevation (Reserved for Popovers & Modals Only) */
+  --shadow-dropdown: 0 4px 16px -2px rgba(28, 25, 23, 0.08), 0 2px 6px -1px rgba(28, 25, 23, 0.04);
+  --shadow-modal: 0 20px 40px -8px rgba(28, 25, 23, 0.14), 0 8px 16px -4px rgba(28, 25, 23, 0.06);
+
+  /* Touch & Form Sizing */
+  --input-height-desktop: 2.75rem; /* 44px */
+  --input-height-mobile: 3.25rem;  /* 52px */
+  --field-touch-target: 3.5rem;    /* 56px for rooftop technician crews */
+}
+
+/* Dark Theme (True Neutral Dark, Calibrated for Low Glare) */
+[data-theme="dark"],
+.dark {
+  --surface-page: #0C0A09;
+  --surface-card: #1C1917;
+  --surface-subtle: #292524;
+  --surface-hover: #332E2C;
+  --surface-active: #44403C;
+
+  --border-subtle: #292524;
+  --border-strong: #44403C;
+  --border-focus: #14B8A6;
+
+  --text-primary: #FAFAF9;
+  --text-secondary: #A8A29E;
+  --text-muted: #78716C;
+  --text-inverse: #0C0A09;
+
+  --accent-base: #14B8A6;
+  --accent-hover: #2DD4BF;
+  --accent-active: #5EEAD4;
+  --accent-subtle: #134E4A;
+  --accent-subtle-border: #115E59;
+  --accent-text: #5EEAD4;
+
+  --success-base: #22C55E;
+  --success-subtle: #052E16;
+  --success-border: #14532D;
+  --success-text: #86EFAC;
+
+  --warning-base: #F59E0B;
+  --warning-subtle: #451A03;
+  --warning-border: #78350F;
+  --warning-text: #FDE68A;
+
+  --danger-base: #EF4444;
+  --danger-subtle: #450A0A;
+  --danger-border: #7F1D1D;
+  --danger-text: #FCA5A5;
+
+  --info-base: #3B82F6;
+  --info-subtle: #172554;
+  --info-border: #1E3A8A;
+  --info-text: #93C5FD;
+
+  --shadow-dropdown: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+}
+
+/* Text Size Scalability Mode */
+[data-text-size="large"] {
+  --text-scale: 112.5%; /* 18px base */
+}
+
+[data-text-size="xlarge"] {
+  --text-scale: 125%;   /* 20px base */
+}
+
+html {
+  font-size: var(--text-scale);
+}

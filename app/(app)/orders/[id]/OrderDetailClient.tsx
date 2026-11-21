@@ -3,28 +3,26 @@
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { GlassCard } from "@/components/ui/glass-card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { formatMoney } from "@/lib/money";
-import { formatIstDate, formatTimeAgo } from "@/lib/time";
-import { recordOrderPayment, confirmOrder } from "@/modules/orders/actions";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatusPill } from "@/components/shared/StatusPill";
+import { StepperTracker } from "@/components/shared/StepperTracker";
+import { EntityHeader } from "@/components/shared/EntityHeader";
+import { MoneyInput } from "@/components/ui/MoneyInput";
+import { formatPaise, formatDateIST } from "@/lib/formatters";
+import { recordOrderPayment } from "@/modules/orders/actions";
 import { type OrderItem } from "@/modules/orders/queries";
 import {
-  ArrowLeft,
   CreditCard,
   CheckCircle2,
-  AlertTriangle,
-  ShoppingBag,
-  Layers,
+  AlertCircle,
   Truck,
   Wrench,
   Calendar,
   Lock,
-  Sparkles,
-  ExternalLink,
-  DollarSign,
-  Send,
-  Zap,
+  ArrowRight,
+  Layers,
+  Clock,
+  X,
 } from "lucide-react";
 
 interface OrderDetailClientProps {
@@ -37,21 +35,18 @@ export function OrderDetailClient({ order: initialOrder, userRole }: OrderDetail
   const [order, setOrder] = useState<OrderItem>(initialOrder);
   const [isPending, startTransition] = useTransition();
 
-  // Payment form state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentAmountRupees, setPaymentAmountRupees] = useState<number>(
-    Number(order.advance_required_paise) / 100
+  const [paymentAmountPaise, setPaymentAmountPaise] = useState<number>(
+    Math.max(0, Number(order.advance_required_paise - order.paid_paise))
   );
-  const [paymentMethod, setPaymentMethod] = useState<
-    "bank_transfer" | "upi" | "cheque" | "cash" | "card"
-  >("bank_transfer");
-  const [reference, setReference] = useState<string>("HDFC" + Math.floor(1000000000 + Math.random() * 9000000000));
+  const [paymentMethod, setPaymentMethod] = useState<"bank_transfer" | "upi" | "cheque" | "cash" | "card">("upi");
+  const [reference, setReference] = useState<string>("UPI-" + Math.floor(10000000 + Math.random() * 90000000));
   const [paymentNotes, setPaymentNotes] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [automationTriggered, setAutomationTriggered] = useState(false);
 
   const isConfirmed = order.status !== "pending_payment";
   const advanceMet = order.paid_paise >= order.advance_required_paise;
+  const progressPct = Math.min(100, Math.round((Number(order.paid_paise) / Number(order.total_paise)) * 100));
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,473 +55,284 @@ export function OrderDetailClient({ order: initialOrder, userRole }: OrderDetail
     startTransition(async () => {
       const res = await recordOrderPayment({
         order_id: order.id,
-        amount_paise: paymentAmountRupees * 100,
+        amount_paise: paymentAmountPaise,
         method: paymentMethod,
         reference,
         notes: paymentNotes || undefined,
       });
 
       if (!res.ok) {
-        setErrorMessage(res.error.message);
-        return;
+        setErrorMessage(res.error?.message || "Failed to record payment.");
+      } else {
+        setShowPaymentModal(false);
+        router.refresh();
       }
-
-      const newPaid = order.paid_paise + BigInt(paymentAmountRupees * 100);
-      const isNowAdvanceMet = newPaid >= order.advance_required_paise;
-
-      setOrder({
-        ...order,
-        paid_paise: newPaid,
-        balance_due_paise: order.total_paise > newPaid ? order.total_paise - newPaid : 0n,
-        pay_status: isNowAdvanceMet ? "advance_met" : "partial",
-        status: isNowAdvanceMet ? "confirmed" : order.status,
-        confirmed_at: isNowAdvanceMet ? new Date().toISOString() : order.confirmed_at,
-        payments: [
-          {
-            id: res.data.payment_id,
-            payment_no: res.data.payment_no,
-            amount_paise: BigInt(paymentAmountRupees * 100),
-            kind: order.paid_paise === 0n ? "advance" : "balance",
-            method: paymentMethod,
-            reference,
-            received_at: new Date().toISOString(),
-            status: "received",
-          },
-          ...(order.payments || []),
-        ],
-      });
-
-      if (isNowAdvanceMet) {
-        setAutomationTriggered(true);
-      }
-
-      setShowPaymentModal(false);
-      router.refresh();
     });
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/orders"
-            className="p-2 rounded-xl bg-white/70 hover:bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80 shadow-sm transition-all"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Link>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
-                {order.order_no}
-              </h1>
-              <StatusBadge status={order.status} />
-              <StatusBadge status={order.pay_status} />
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Project <span className="font-mono font-bold">{order.project?.project_no}</span> •
-              Client: <span className="font-semibold text-slate-800">{order.project?.customer?.name}</span>
-            </p>
+    <div className="space-y-6 pb-16">
+      {/* Page Header */}
+      <PageHeader
+        title={`Order ${order.order_no}`}
+        description="Fulfillment tracking, payment allocations, warehouse pick-lists, and crew installation dispatch."
+        breadcrumbs={[
+          { label: "Dashboard", href: "/dashboard" },
+          { label: "Orders", href: "/orders" },
+          { label: order.order_no },
+        ]}
+      />
+
+      {/* Entity Header */}
+      <EntityHeader
+        title={order.project?.customer?.name || order.delivery_name || "Order Details"}
+        badgeCode={order.order_no}
+        status={order.status}
+        phone={order.project?.customer?.phone_e164}
+        meta={[
+          { label: "Total Value", value: formatPaise(order.total_paise) },
+          { label: "50% Advance Req.", value: formatPaise(order.advance_required_paise) },
+          { label: "Amount Paid", value: formatPaise(order.paid_paise) },
+          { label: "Site Address", value: order.delivery_address || "Punjab" },
+          { label: "Order Date", value: formatDateIST(order.created_at) },
+          { label: "Confirmed", value: order.confirmed_at ? formatDateIST(order.confirmed_at) : "Pending Advance" },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            {!advanceMet && (
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="btn-primary h-10 px-4 text-body-sm font-semibold inline-flex items-center gap-1.5"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>Record Advance Payment</span>
+              </button>
+            )}
+            {advanceMet && (
+              <Link
+                href="/warehouse"
+                className="btn-primary h-10 px-4 text-body-sm font-semibold inline-flex items-center gap-1.5"
+              >
+                <Truck className="w-4 h-4" />
+                <span>Warehouse Scan Station</span>
+              </Link>
+            )}
           </div>
-        </div>
+        }
+      />
 
-        {/* Action Button: Record Payment */}
-        <div className="flex items-center gap-2">
-          {order.balance_due_paise > 0n && (
-            <button
-              onClick={() => setShowPaymentModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>
-                {order.paid_paise === 0n ? "Record 50% Advance Payment" : "Record Balance Payment"}
-              </span>
-            </button>
-          )}
+      {/* Stepper Golden Thread */}
+      <StepperTracker
+        currentStage={order.status === "pending_payment" ? "order" : order.status === "confirmed" ? "dispatch" : "install"}
+        blockerMessage={
+          !advanceMet
+            ? "AUTOMATION GATE (A6): Warehouse pick-list and installation job are locked until 50% advance payment is received."
+            : undefined
+        }
+        nextActionOwner={advanceMet ? "Warehouse Storekeeper (Scan Serials)" : "Accounts (Record Payment)"}
+      />
 
-          {isConfirmed && (
-            <Link
-              href="/warehouse"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition-colors"
-            >
-              <Truck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Warehouse Dispatch →</span>
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* AUTOMATION A6 BANNER (Golden Thread Milestone) */}
-      {(isConfirmed || automationTriggered) ? (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-600 text-white shadow-lg space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-md">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
+      {/* Main Grid: Payment Progress & Fulfillment Automation */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left 6 cols: Payment Progress & History */}
+        <div className="lg:col-span-6 space-y-4">
+          <div className="card-surface p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
               <div>
-                <h3 className="font-bold text-sm">
-                  Automation A6 Triggered: Order Confirmed & Dispatched!
+                <h3 className="text-heading font-semibold text-[var(--text-primary)]">
+                  Payment Progress & Reconciliation
                 </h3>
-                <p className="text-xs text-emerald-100">
-                  Advance milestone satisfied. The system has automatically executed 3 downstream operations:
-                </p>
+                <span className="text-caption text-[var(--text-muted)]">
+                  50% advance requirement trigger for automated execution.
+                </span>
+              </div>
+              <span className="text-heading font-mono font-bold tabular-nums text-[var(--text-primary)]">
+                {progressPct}%
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-1.5">
+              <div className="h-3 w-full bg-[var(--surface-subtle)] rounded-full overflow-hidden border border-[var(--border-subtle)]">
+                <div
+                  className="h-full bg-[var(--accent-base)] transition-all duration-500 rounded-full"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-caption text-[var(--text-muted)] font-mono">
+                <span>Received: {formatPaise(order.paid_paise)}</span>
+                <span>Required: {formatPaise(order.advance_required_paise)} (50%)</span>
               </div>
             </div>
-            <span className="text-xs font-mono font-bold bg-white/20 px-3 py-1 rounded-lg">
-              Golden Thread Step 4
-            </span>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-            <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md">
-              <div className="flex items-center gap-1.5 font-bold text-emerald-100">
-                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                <span>1. Stock Reserved</span>
-              </div>
-              <p className="text-[11px] text-emerald-100/90 mt-0.5">
-                Serial units (Panels, Inverter) and BOS hardware reserved in inventory ledger.
-              </p>
-            </div>
-
-            <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md">
-              <div className="flex items-center gap-1.5 font-bold text-emerald-100">
-                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                <span>2. Warehouse Pick-list</span>
-              </div>
-              <p className="text-[11px] text-emerald-100/90 mt-0.5">
-                Pick-list generated without pricing. Warehouse ready for QR scanning.
-              </p>
-            </div>
-
-            <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md">
-              <div className="flex items-center gap-1.5 font-bold text-emerald-100">
-                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                <span>3. Install Job Dispatched</span>
-              </div>
-              <p className="text-[11px] text-emerald-100/90 mt-0.5">
-                Field installation job auto-scheduled on lead technician&apos;s mobile schedule.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-300/80 text-xs text-amber-900 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <CreditCard className="w-5 h-5 text-amber-600" />
-            <div>
-              <span className="font-bold">Awaiting 50% Advance Milestone</span>
-              <p className="text-[11px] text-amber-800">
-                Recording ₹{formatMoney(order.advance_required_paise)} advance triggers stock reservation, warehouse pick-list, and field crew installation job.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowPaymentModal(true)}
-            className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-sm"
-          >
-            Record Payment Now
-          </button>
-        </div>
-      )}
-
-      {errorMessage && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
-      )}
-
-      {/* Financial Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <GlassCard className="p-4">
-          <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">
-            Total Order Value
-          </span>
-          <div className="text-xl font-extrabold text-slate-900 font-mono mt-1">
-            {formatMoney(order.total_paise)}
-          </div>
-          <span className="text-[10px] text-slate-500 block mt-0.5">
-            {order.project?.requested_kw || 3} kW System
-          </span>
-        </GlassCard>
-
-        <GlassCard className="p-4 border-amber-200/80">
-          <span className="text-[10px] text-amber-700 block uppercase font-bold tracking-wider">
-            Advance Required (50%)
-          </span>
-          <div className="text-xl font-extrabold text-amber-800 font-mono mt-1">
-            {formatMoney(order.advance_required_paise)}
-          </div>
-          <span className="text-[10px] text-amber-700/80 block mt-0.5">
-            {advanceMet ? "✓ 100% Satisfied" : "Pending Client Deposit"}
-          </span>
-        </GlassCard>
-
-        <GlassCard className="p-4 border-emerald-200/80">
-          <span className="text-[10px] text-emerald-700 block uppercase font-bold tracking-wider">
-            Total Paid To Date
-          </span>
-          <div className="text-xl font-extrabold text-emerald-700 font-mono mt-1">
-            {formatMoney(order.paid_paise)}
-          </div>
-          <span className="text-[10px] text-emerald-700/80 block mt-0.5">
-            {order.payments?.length || 0} Recorded Receipts
-          </span>
-        </GlassCard>
-
-        <GlassCard className="p-4">
-          <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">
-            Balance Due at Handover
-          </span>
-          <div className="text-xl font-extrabold text-slate-900 font-mono mt-1">
-            {formatMoney(order.balance_due_paise)}
-          </div>
-          <span className="text-[10px] text-slate-500 block mt-0.5">
-            Due after power generation test
-          </span>
-        </GlassCard>
-      </div>
-
-      {/* Order Equipment & Stock Reservation Status */}
-      <GlassCard className="overflow-hidden p-0 border border-slate-200/70">
-        <div className="p-4 bg-slate-50/90 border-b border-slate-200/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-amber-500" />
-            <h3 className="font-bold text-slate-900 text-xs">
-              Order Equipment & Inventory Reservation Progress
-            </h3>
-          </div>
-          <span className="text-[10px] font-mono text-slate-500">
-            {order.lines?.length || 0} Equipment Items
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-100/60 border-b border-slate-200/80 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
-                <th className="py-2.5 px-4 w-12">#</th>
-                <th className="py-2.5 px-4">Product & Specification</th>
-                <th className="py-2.5 px-4">Tracking</th>
-                <th className="py-2.5 px-4 text-right">Order Qty</th>
-                <th className="py-2.5 px-4 text-center">Stock Reservation</th>
-                <th className="py-2.5 px-4 text-right">Line Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {order.lines?.map((line) => (
-                <tr key={line.id} className="hover:bg-slate-50/50">
-                  <td className="py-2.5 px-4 font-mono text-slate-400">{line.line_no}</td>
-                  <td className="py-2.5 px-4">
-                    <div className="font-semibold text-slate-900">{line.description}</div>
-                    <div className="font-mono text-[10px] text-slate-400 mt-0.5">{line.sku}</div>
-                  </td>
-                  <td className="py-2.5 px-4">
-                    {line.is_serialised ? (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">
-                        Serial Scanned
-                      </span>
+            {/* Payment Transactions Table */}
+            <div className="pt-2">
+              <span className="text-label text-xs uppercase tracking-wider block text-[var(--text-muted)] mb-2">
+                Recorded Transactions
+              </span>
+              <div className="border border-[var(--border-subtle)] rounded-md overflow-hidden">
+                <table className="w-full text-left text-body-sm">
+                  <thead className="bg-[var(--surface-subtle)] border-b border-[var(--border-subtle)] text-label text-xs">
+                    <tr>
+                      <th className="py-2 px-3">Date</th>
+                      <th className="py-2 px-3">Mode</th>
+                      <th className="py-2 px-3">Reference</th>
+                      <th className="py-2 px-3 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
+                    {order.payments && order.payments.length > 0 ? (
+                      order.payments.map((p, idx) => (
+                        <tr key={idx} className="hover:bg-[var(--surface-hover)]">
+                          <td className="py-2.5 px-3 font-mono text-xs">{formatDateIST(p.received_at)}</td>
+                          <td className="py-2.5 px-3 capitalize">{p.method?.replace("_", " ")}</td>
+                          <td className="py-2.5 px-3 font-mono text-xs text-[var(--text-muted)]">{p.reference || "—"}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-semibold tabular-nums text-[var(--success-base)]">
+                            {formatPaise(p.amount_paise)}
+                          </td>
+                        </tr>
+                      ))
                     ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                        Bulk Counted
-                      </span>
+                      <tr>
+                        <td colSpan={4} className="py-4 text-center text-[var(--text-muted)]">
+                          No payments recorded yet. Record 50% advance to confirm order.
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="py-2.5 px-4 text-right font-bold text-slate-900">
-                    {line.qty} {line.uom}
-                  </td>
-                  <td className="py-2.5 px-4 text-center">
-                    {isConfirmed ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        <span>Reserved {line.qty}/{line.qty}</span>
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 italic">
-                        Awaiting advance confirmation
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
-                    {formatMoney(line.line_total_paise)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </GlassCard>
-
-      {/* Payment Receipts Ledger */}
-      <GlassCard className="overflow-hidden p-0 border border-slate-200/70">
-        <div className="p-4 bg-slate-50/90 border-b border-slate-200/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-emerald-600" />
-            <h3 className="font-bold text-slate-900 text-xs">
-              Official Payment Receipts & UTR Ledger
-            </h3>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
-          <span className="text-[10px] text-slate-500">
-            {order.payments?.length || 0} Transactions
-          </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-100/60 border-b border-slate-200/80 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
-                <th className="py-2.5 px-4">Receipt #</th>
-                <th className="py-2.5 px-4">Kind</th>
-                <th className="py-2.5 px-4">Method & UTR</th>
-                <th className="py-2.5 px-4 text-right">Amount</th>
-                <th className="py-2.5 px-4">Received Date</th>
-                <th className="py-2.5 px-4 text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {!order.payments || order.payments.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-6 text-slate-400 italic">
-                    No payment receipts recorded yet. Click &apos;Record 50% Advance Payment&apos; above.
-                  </td>
-                </tr>
-              ) : (
-                order.payments.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/50">
-                    <td className="py-2.5 px-4 font-mono font-bold text-slate-900">{p.payment_no}</td>
-                    <td className="py-2.5 px-4 capitalize font-semibold text-slate-800">{p.kind}</td>
-                    <td className="py-2.5 px-4">
-                      <div className="font-medium capitalize text-slate-800">
-                        {p.method.replace("_", " ")}
-                      </div>
-                      <div className="font-mono text-[10px] text-slate-400 mt-0.5">
-                        Ref: {p.reference}
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono font-bold text-emerald-700">
-                      {formatMoney(p.amount_paise)}
-                    </td>
-                    <td className="py-2.5 px-4 text-slate-600">{formatIstDate(p.received_at)}</td>
-                    <td className="py-2.5 px-4 text-right">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        Received
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </GlassCard>
+        {/* Right 6 cols: 'What Happens Next' Automation Status */}
+        <div className="lg:col-span-6 space-y-4">
+          <div className="card-surface p-5 space-y-4">
+            <div className="pb-3 border-b border-[var(--border-subtle)]">
+              <h3 className="text-heading font-semibold text-[var(--text-primary)]">
+                Fulfillment & Execution Pipeline
+              </h3>
+              <p className="text-caption text-[var(--text-muted)]">
+                Automated pipeline triggers verified by the Arka workflow state machine.
+              </p>
+            </div>
 
-      {/* Record Payment Modal */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+            <div className="space-y-3">
+              {/* Pipeline Step 1 */}
+              <div className="p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-subtle)] flex items-start gap-3">
+                <div className={`p-2 rounded-md ${advanceMet ? "bg-[var(--success-subtle)] text-[var(--success-base)]" : "bg-[var(--surface-card)] text-[var(--text-muted)]"}`}>
                   <CreditCard className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Record Customer Payment</h3>
-                  <p className="text-xs text-slate-500">
-                    Idempotent bank transaction verification
-                  </p>
+                <div className="flex-1">
+                  <div className="text-body-sm font-semibold text-[var(--text-primary)]">
+                    1. 50% Advance Payment Gate (A6)
+                  </div>
+                  <div className="text-caption text-[var(--text-secondary)] mt-0.5">
+                    {advanceMet ? "Advance payment verified. Order automatically confirmed." : "Awaiting customer advance transfer to initiate stock reservation."}
+                  </div>
                 </div>
+                <StatusPill status={advanceMet ? "confirmed" : "pending_payment"} size="sm" />
               </div>
-              <button
-                onClick={() => setShowPaymentModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
-              >
-                ✕
+
+              {/* Pipeline Step 2 */}
+              <div className="p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-subtle)] flex items-start gap-3">
+                <div className={`p-2 rounded-md ${isConfirmed ? "bg-[var(--accent-subtle)] text-[var(--accent-base)]" : "bg-[var(--surface-card)] text-[var(--text-muted)]"}`}>
+                  <Truck className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-body-sm font-semibold text-[var(--text-primary)]">
+                    2. Warehouse Pick-list & Serial Reservation
+                  </div>
+                  <div className="text-caption text-[var(--text-secondary)] mt-0.5">
+                    {isConfirmed ? "Pick-list queued for storekeeper. Hardware ready for barcode scan dispatch." : "Locked until order confirmation."}
+                  </div>
+                </div>
+                <StatusPill status={isConfirmed ? "in_progress" : "draft"} size="sm" />
+              </div>
+
+              {/* Pipeline Step 3 */}
+              <div className="p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-subtle)] flex items-start gap-3">
+                <div className={`p-2 rounded-md ${order.status === "installed" ? "bg-[var(--success-subtle)] text-[var(--success-base)]" : "bg-[var(--surface-card)] text-[var(--text-muted)]"}`}>
+                  <Wrench className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-body-sm font-semibold text-[var(--text-primary)]">
+                    3. Field Installation & Commissioning Job
+                  </div>
+                  <div className="text-caption text-[var(--text-secondary)] mt-0.5">
+                    {order.status === "installed" ? "Installation complete with geotagged photos and customer signoff." : "Installation scheduled on technician calendar."}
+                  </div>
+                </div>
+                <StatusPill status={order.status === "installed" ? "installed" : "scheduled"} size="sm" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal: Record Advance Payment Drawer */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40" onClick={() => setShowPaymentModal(false)} />
+          <form onSubmit={handleRecordPayment} className="relative card-surface p-6 max-w-md w-full border border-[var(--border-strong)] shadow-[var(--shadow-modal)] space-y-4 z-10">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-subtle)]">
+              <h3 className="text-title font-semibold text-[var(--text-primary)]">
+                Record Customer Payment
+              </h3>
+              <button type="button" onClick={() => setShowPaymentModal(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleRecordPayment} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">
-                  Amount Received (₹) *
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
-                    ₹
-                  </span>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={paymentAmountRupees}
-                    onChange={(e) => setPaymentAmountRupees(Number(e.target.value))}
-                    className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm font-mono font-bold focus:ring-2 focus:ring-amber-500/30"
-                  />
-                </div>
-                <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-                  <span>Advance Req: ₹{(Number(order.advance_required_paise) / 100).toLocaleString("en-IN")}</span>
-                  <span>Balance Due: ₹{(Number(order.balance_due_paise) / 100).toLocaleString("en-IN")}</span>
-                </div>
+            {errorMessage && (
+              <div className="p-3 rounded-md bg-[var(--danger-subtle)] border border-[var(--danger-border)] text-body-sm text-[var(--danger-text)]">
+                {errorMessage}
               </div>
+            )}
 
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Payment Method *</label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
-                >
-                  <option value="bank_transfer">Bank Transfer (NEFT / RTGS / IMPS)</option>
-                  <option value="upi">UPI (GPay / PhonePe / Paytm)</option>
-                  <option value="cheque">Cheque Deposit</option>
-                  <option value="card">Card Payment</option>
-                  <option value="cash">Cash Receipt</option>
-                </select>
-              </div>
+            <MoneyInput
+              label="Amount Received (Paise Controlled)"
+              valueInPaise={paymentAmountPaise}
+              onChangePaise={setPaymentAmountPaise}
+            />
 
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">
-                  Bank Reference / UTR / Cheque # *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. HDFC9182740192"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono"
-                />
-              </div>
+            <div>
+              <label className="text-label block mb-1">Payment Method</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as any)}
+                className="input-standard"
+              >
+                <option value="upi">UPI (GPay, PhonePe, Paytm)</option>
+                <option value="bank_transfer">NEFT / RTGS / IMPS Bank Transfer</option>
+                <option value="cheque">Cheque</option>
+                <option value="card">Debit / Credit Card</option>
+                <option value="cash">Cash</option>
+              </select>
+            </div>
 
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-800 space-y-1">
-                <span className="font-bold flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Golden Automation A6 Trigger:</span>
-                </span>
-                <p>
-                  Paying ≥ 50% advance automatically confirms this order, reserves stock, creates the warehouse pick-list, and dispatches the installation crew!
-                </p>
-              </div>
+            <div>
+              <label className="text-label block mb-1">Transaction UTR / Cheque Ref</label>
+              <input
+                type="text"
+                required
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="e.g. UTR12345678"
+                className="input-standard font-mono"
+              />
+            </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowPaymentModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isPending || paymentAmountRupees <= 0}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-600/20 disabled:opacity-50"
-                >
-                  {isPending ? "Recording & Confirming..." : "Record Payment Receipt"}
-                </button>
-              </div>
-            </form>
-          </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+              <button type="button" onClick={() => setShowPaymentModal(false)} className="btn-secondary h-10 px-4">
+                Cancel
+              </button>
+              <button type="submit" disabled={isPending} className="btn-primary h-10 px-4">
+                {isPending ? "Recording..." : "Confirm Payment Receipt"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

@@ -1,27 +1,32 @@
 "use client";
 
 import React, { useState, useTransition, useMemo } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { GlassCard } from "@/components/ui/glass-card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { formatTimeAgo, formatIstDate } from "@/lib/time";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatusPill } from "@/components/shared/StatusPill";
+import { StepperTracker } from "@/components/shared/StepperTracker";
+import { EntityHeader } from "@/components/shared/EntityHeader";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { PhoneInput } from "@/components/ui/PhoneInput";
+import { formatDateIST, formatPhoneIndian, formatRelativeTime, getPhoneActions } from "@/lib/formatters";
+import { createLead, qualifyLead, closeLead, logActivity } from "@/modules/leads/actions";
 import { type LeadItem } from "@/modules/leads/queries";
-import { createLead } from "@/modules/leads/actions";
 import {
   Users,
   Search,
   Plus,
   Phone,
-  Mail,
-  MapPin,
-  Clock,
-  AlertTriangle,
-  ArrowRight,
-  Filter,
-  CheckCircle2,
+  MessageCircle,
   Calendar,
-  Zap,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Calculator,
+  Send,
+  X,
+  FileCheck2,
+  MapPin,
+  Check,
 } from "lucide-react";
 
 interface LeadsClientProps {
@@ -31,40 +36,55 @@ interface LeadsClientProps {
 export function LeadsClient({ initialLeads }: LeadsClientProps) {
   const router = useRouter();
   const [leads, setLeads] = useState<LeadItem[]>(initialLeads);
+  const [selectedLeadId, setSelectedLeadId] = useState<string>(initialLeads[0]?.id || "");
   const [activeTab, setActiveTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [isPending, startTransition] = useTransition();
 
   // Create lead form state
-  const [newLead, setNewLead] = useState<{
-    name: string;
-    phone: string;
-    email: string;
-    city: string;
-    address: string;
-    source: "call" | "web" | "whatsapp" | "walk_in" | "referral" | "other";
-    system_type: "on_grid" | "off_grid" | "hybrid";
-    requested_kw: number;
-    wants_subsidy: boolean;
-    notes: string;
-  }>({
+  const [newLead, setNewLead] = useState({
     name: "",
     phone: "",
     email: "",
     city: "",
     address: "",
-    source: "call",
-    system_type: "on_grid",
-    requested_kw: 3.0,
+    source: "call" as const,
+    system_type: "on_grid" as const,
+    requested_kw: 3.3,
     wants_subsidy: true,
     notes: "",
   });
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Selected lead
+  const selectedLead = useMemo(() => {
+    return leads.find((l) => l.id === selectedLeadId) || leads[0];
+  }, [leads, selectedLeadId]);
+
+  // Lead qualification form state
+  const [checklist, setChecklist] = useState({
+    roof_ownership: "owned" as "owned" | "rented" | "society" | "unknown",
+    shadow_free_sqft: 250,
+    monthly_units: 350,
+    sanctioned_load_kw: 5,
+    has_meter_bill: true,
+    consumer_no: "1002349812",
+  });
+
+  // Follow-up note state
+  const [newNote, setNewNote] = useState("");
+  const [followupDate, setFollowupDate] = useState("");
+
+  // Modals for Qualify & Close
+  const [showQualifyModal, setShowQualifyModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeReason, setCloseReason] = useState<"lost_to_competitor" | "disqualified_roof" | "unreachable" | "price_too_high">("lost_to_competitor");
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Filter leads
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      // Status filter
       if (activeTab === "overdue") {
         const isOverdue =
           lead.next_followup_at &&
@@ -75,493 +95,582 @@ export function LeadsClient({ initialLeads }: LeadsClientProps) {
         return false;
       }
 
-      // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchNo = lead.lead_no.toLowerCase().includes(q);
-        const matchName = lead.customer?.name.toLowerCase().includes(q);
-        const matchPhone = lead.customer?.phone_e164.includes(q);
-        const matchCity = lead.site_city?.toLowerCase().includes(q);
-        if (!matchNo && !matchName && !matchPhone && !matchCity) return false;
+        const nameMatch = lead.customer?.name?.toLowerCase().includes(q);
+        const phoneMatch = lead.customer?.phone_e164?.includes(q);
+        const cityMatch = lead.site_city?.toLowerCase().includes(q);
+        const noMatch = lead.lead_no?.toLowerCase().includes(q);
+        return Boolean(nameMatch || phoneMatch || cityMatch || noMatch);
       }
-
       return true;
     });
   }, [leads, activeTab, searchQuery]);
 
-  const overdueCount = useMemo(() => {
-    return leads.filter(
-      (l) =>
-        l.next_followup_at &&
-        new Date(l.next_followup_at).getTime() < Date.now() &&
-        !["converted", "lost"].includes(l.status)
-    ).length;
-  }, [leads]);
+  // System Size Recommendation Calculation (monthly_units / 120 = recommended kW)
+  const recommendedKw = Math.max(1, Math.min(10, Math.round((checklist.monthly_units / 115) * 10) / 10));
 
+  // Handler: Create Lead
   const handleCreateLead = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    if (!newLead.name.trim() || !newLead.phone.trim()) {
+      setFormError("Name and phone number are required.");
+      return;
+    }
 
     startTransition(async () => {
       const res = await createLead({
         name: newLead.name,
         phone_e164: newLead.phone,
         email: newLead.email || undefined,
+        site_city: newLead.city || undefined,
         site_address: newLead.address || undefined,
-        site_city: newLead.city || "Pune",
         source: newLead.source,
         requirement: newLead.system_type,
-        requested_kw: Number(newLead.requested_kw),
+        requested_kw: newLead.requested_kw,
         wants_subsidy: newLead.wants_subsidy,
         notes: newLead.notes || undefined,
       });
-
-      if (!res.ok) {
-        setFormError(res.error.message);
-        return;
-      }
-
-      setShowCreateModal(false);
-      router.refresh();
-      if (res.data?.lead_id) {
-        router.push(`/leads/${res.data.lead_id}`);
+      if (res.ok) {
+        setShowCreateModal(false);
+        router.refresh();
+      } else {
+        setFormError(res.error?.message || "Failed to create lead.");
       }
     });
   };
 
+  // Handler: Qualify Lead
+  const handleQualifyLead = async () => {
+    if (!selectedLead) return;
+    setActionError(null);
+    startTransition(async () => {
+      const res = await qualifyLead({
+        lead_id: selectedLead.id,
+        shadow_free_area_sqft: checklist.shadow_free_sqft,
+        monthly_units: checklist.monthly_units,
+        grid_connection_suitable: checklist.sanctioned_load_kw >= recommendedKw,
+        roof_ownership: checklist.roof_ownership,
+        consumer_number: checklist.consumer_no,
+        suggested_kw: recommendedKw,
+      });
+
+      if (res.ok) {
+        setShowQualifyModal(false);
+        router.refresh();
+      } else {
+        setActionError(res.error?.message || "Failed to qualify lead.");
+      }
+    });
+  };
+
+  // Handler: Close Lead
+  const handleCloseLead = async () => {
+    if (!selectedLead) return;
+    setActionError(null);
+    startTransition(async () => {
+      const res = await closeLead({
+        lead_id: selectedLead.id,
+        status: "lost",
+        reason: closeReason || "Closed via sales lead review",
+      });
+
+      if (res.ok) {
+        setShowCloseModal(false);
+        router.refresh();
+      } else {
+        setActionError(res.error?.message || "Failed to close lead.");
+      }
+    });
+  };
+
+  // Handler: Add Activity Note
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNote.trim() || !selectedLead) return;
+
+    startTransition(async () => {
+      await logActivity({
+        lead_id: selectedLead.id,
+        kind: "call",
+        note: newNote,
+        next_followup: followupDate ? new Date(followupDate).toISOString() : undefined,
+      });
+      setNewNote("");
+      router.refresh();
+    });
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Top Header / Stats Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Sales Leads Queue</h1>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-              {leads.length} Active Leads
-            </span>
-            {overdueCount > 0 && (
-              <button
-                onClick={() => setActiveTab("overdue")}
-                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 animate-pulse hover:bg-rose-200 transition-colors"
-              >
-                <AlertTriangle className="w-3 h-3 text-rose-600" />
-                {overdueCount} Overdue Follow-ups
-              </button>
-            )}
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Golden Thread step 1: Capture inquiry, qualify roof & bill, route to technical site survey.
-          </p>
-        </div>
+    <div className="space-y-6 pb-12">
+      {/* Page Header */}
+      <PageHeader
+        title="Leads Queue & Telecalling Funnel"
+        description="Capture enquiries, run pre-qualification checklists, and schedule site surveys."
+        breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Leads" }]}
+        actions={
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="btn-primary h-10 px-4 text-body-sm font-semibold inline-flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Lead</span>
+          </button>
+        }
+        tabs={[
+          { id: "all", label: "All Leads", count: leads.length, active: activeTab === "all", onClick: () => setActiveTab("all") },
+          { id: "new", label: "New", count: leads.filter((l) => l.status === "new").length, active: activeTab === "new", onClick: () => setActiveTab("new") },
+          { id: "contacted", label: "Contacted", count: leads.filter((l) => l.status === "contacted").length, active: activeTab === "contacted", onClick: () => setActiveTab("contacted") },
+          { id: "qualified", label: "Qualified", count: leads.filter((l) => l.status === "qualified").length, active: activeTab === "qualified", onClick: () => setActiveTab("qualified") },
+          { id: "overdue", label: "Overdue Follow-ups", count: leads.filter((l) => l.next_followup_at && new Date(l.next_followup_at).getTime() < Date.now() && !["converted", "lost"].includes(l.status)).length, active: activeTab === "overdue", onClick: () => setActiveTab("overdue") },
+        ]}
+      />
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-medium text-sm shadow-md shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Lead</span>
-        </button>
-      </div>
-
-      {/* Filter Tabs & Search Controls */}
-      <GlassCard className="p-3">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-            {[
-              { id: "all", label: "All Leads", count: leads.length },
-              {
-                id: "new",
-                label: "New",
-                count: leads.filter((l) => l.status === "new").length,
-              },
-              {
-                id: "contacting",
-                label: "Contacting",
-                count: leads.filter((l) => l.status === "contacting").length,
-              },
-              {
-                id: "follow_up",
-                label: "Follow Up",
-                count: leads.filter((l) => l.status === "follow_up").length,
-              },
-              {
-                id: "converted",
-                label: "Qualified",
-                count: leads.filter((l) => l.status === "converted").length,
-              },
-              {
-                id: "lost",
-                label: "Lost",
-                count: leads.filter((l) => l.status === "lost").length,
-              },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    activeTab === tab.id
-                      ? "bg-white/20 text-white"
-                      : "bg-slate-200/80 text-slate-700"
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </div>
-
+      {/* Split View Container (List on Left, Detail on Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Filterable Leads List (5 Cols) */}
+        <div className="lg:col-span-5 space-y-3">
           {/* Search Box */}
-          <div className="relative min-w-[240px] max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none" />
             <input
               type="text"
-              placeholder="Search by name, phone, city, ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-white/70 border border-slate-200/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-slate-800 placeholder-slate-400 shadow-inner"
+              placeholder="Search name, phone, city, or ID..."
+              className="w-full h-10 pl-9 pr-3 text-body-sm bg-[var(--surface-card)] border border-[var(--border-strong)] rounded-md focus:border-[var(--accent-base)] focus:outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>
+
+          {/* Leads Stack */}
+          <div className="card-surface divide-y divide-[var(--border-subtle)] overflow-hidden max-h-[calc(100vh-280px)] overflow-y-auto scrollbar-thin">
+            {filteredLeads.length === 0 ? (
+              <div className="p-8 text-center">
+                <EmptyState
+                  title="No leads match"
+                  description="Try clearing search keywords or active filters."
+                />
+              </div>
+            ) : (
+              filteredLeads.map((lead) => {
+                const isSelected = lead.id === selectedLead?.id;
+                const isOverdue =
+                  lead.next_followup_at &&
+                  new Date(lead.next_followup_at).getTime() < Date.now() &&
+                  !["converted", "lost"].includes(lead.status);
+
+                return (
+                  <div
+                    key={lead.id}
+                    onClick={() => setSelectedLeadId(lead.id)}
+                    className={`p-4 transition-colors cursor-pointer select-none ${
+                      isSelected
+                        ? "bg-[var(--accent-subtle)] border-l-4 border-[var(--accent-base)]"
+                        : "hover:bg-[var(--surface-hover)]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-body-sm text-[var(--text-primary)] truncate">
+                            {lead.customer?.name}
+                          </span>
+                          <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                            {lead.lead_no}
+                          </span>
+                        </div>
+                        <div className="text-body-sm font-mono text-[var(--text-secondary)]">
+                          {formatPhoneIndian(lead.customer?.phone_e164)}
+                        </div>
+                      </div>
+                      <StatusPill status={lead.status} size="sm" />
+                    </div>
+
+                    <div className="mt-2.5 flex items-center justify-between text-caption text-[var(--text-muted)]">
+                      <span className="font-medium text-[var(--text-secondary)]">
+                        {lead.requested_kw} kW · {(lead.requirement || "on_grid").replace("_", " ")}
+                      </span>
+                      {isOverdue ? (
+                        <span className="text-[var(--danger-base)] font-semibold flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> Overdue
+                        </span>
+                      ) : (
+                        <span>{formatRelativeTime(lead.created_at)}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
-      </GlassCard>
 
-      {/* Leads Table / Card Grid */}
-      <GlassCard className="overflow-hidden p-0 border border-slate-200/70">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
-                <th className="py-3 px-4">Lead #</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4">Requirement</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Follow-up</th>
-                <th className="py-3 px-4">Assigned To</th>
-                <th className="py-3 px-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100/80">
-              {filteredLeads.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-500">
-                    <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-                    <p className="font-medium text-slate-700">No leads found</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {searchQuery
-                        ? "Try adjusting your search criteria"
-                        : "New inquiries will appear here automatically."}
-                    </p>
-                  </td>
-                </tr>
-              ) : (
-                filteredLeads.map((lead) => {
-                  const isOverdue =
-                    lead.next_followup_at &&
-                    new Date(lead.next_followup_at).getTime() < Date.now() &&
-                    !["converted", "lost"].includes(lead.status);
-
-                  return (
-                    <tr
-                      key={lead.id}
-                      className="hover:bg-amber-50/40 transition-colors group cursor-pointer"
-                      onClick={() => router.push(`/leads/${lead.id}`)}
+        {/* Right Column: Lead Detail & Qualification Form (7 Cols) */}
+        {selectedLead ? (
+          <div className="lg:col-span-7 space-y-6">
+            {/* Entity Header */}
+            <EntityHeader
+              title={selectedLead.customer?.name || "Lead Details"}
+              badgeCode={selectedLead.lead_no}
+              status={selectedLead.status}
+              phone={selectedLead.customer?.phone_e164}
+              meta={[
+                { label: "City", value: selectedLead.site_city || "Punjab" },
+                { label: "System Req.", value: `${selectedLead.requested_kw} kW ${(selectedLead.requirement || "on_grid").toUpperCase()}` },
+                { label: "Subsidy", value: selectedLead.wants_subsidy ? "Surya Ghar Yes" : "No" },
+                { label: "Owner", value: selectedLead.owner?.full_name || "Unassigned" },
+                { label: "Created", value: formatDateIST(selectedLead.created_at) },
+                { label: "Source", value: selectedLead.source.replace("_", " ") },
+              ]}
+              actions={
+                selectedLead.status !== "converted" && selectedLead.status !== "lost" ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowCloseModal(true)}
+                      className="btn-secondary h-9 px-3 text-xs text-[var(--danger-base)]"
                     >
-                      {/* Lead Number & Source */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5 font-mono font-semibold text-slate-900">
-                          <span>{lead.lead_no}</span>
-                          {lead.wants_subsidy && (
-                            <span
-                              title="PM Surya Ghar Subsidy Requested"
-                              className="w-2 h-2 rounded-full bg-emerald-500"
-                            />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5 capitalize">
-                          <span>Source: {lead.source.replace("_", " ")}</span>
-                          <span>•</span>
-                          <span>{formatTimeAgo(lead.created_at)}</span>
-                        </div>
-                      </td>
+                      Close Lead
+                    </button>
+                    <button
+                      onClick={() => setShowQualifyModal(true)}
+                      className="btn-primary h-9 px-3 text-xs"
+                    >
+                      Qualify & Create Project
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-body-sm font-semibold text-[var(--text-muted)]">
+                    Lead is {selectedLead.status}
+                  </span>
+                )
+              }
+            />
 
-                      {/* Customer Details */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-medium text-slate-900 group-hover:text-amber-600 transition-colors">
-                          {lead.customer?.name}
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
-                          <span className="font-mono">{lead.customer?.phone_e164}</span>
-                          {lead.site_city && (
-                            <>
-                              <span>•</span>
-                              <span className="flex items-center gap-0.5 text-slate-400">
-                                <MapPin className="w-2.5 h-2.5" />
-                                {lead.site_city}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </td>
+            {/* Stepper Golden Thread */}
+            <StepperTracker
+              currentStage={selectedLead.status === "qualified" || selectedLead.status === "converted" ? "qualify" : "enquiry"}
+              nextActionOwner={selectedLead.status === "new" ? "Telecaller Call" : "Manager Survey Approval"}
+            />
 
-                      {/* Requirement */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-slate-900">
-                            {lead.requested_kw ? `${lead.requested_kw} kW` : "Custom"}
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-100 text-slate-700 capitalize">
-                            {(lead.requirement || "on_grid").replace("_", "-")}
-                          </span>
-                        </div>
-                        {lead.wants_subsidy && (
-                          <div className="text-[10px] text-emerald-600 font-medium mt-0.5">
-                            Govt Subsidy: ₹78k eligible
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3.5 px-4">
-                        <StatusBadge status={lead.status} />
-                      </td>
-
-                      {/* Follow-up / Overdue */}
-                      <td className="py-3.5 px-4">
-                        {lead.next_followup_at ? (
-                          <div
-                            className={`flex items-center gap-1.5 text-[11px] font-medium ${
-                              isOverdue ? "text-rose-600 font-bold" : "text-slate-600"
-                            }`}
-                          >
-                            {isOverdue && <AlertTriangle className="w-3.5 h-3.5 animate-bounce text-rose-500" />}
-                            <span>{formatIstDate(lead.next_followup_at)}</span>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic">None scheduled</span>
-                        )}
-                        <div className="text-[10px] text-slate-400 mt-0.5">
-                          {lead.attempt_count} attempt{lead.attempt_count === 1 ? "" : "s"}
-                        </div>
-                      </td>
-
-                      {/* Assigned Owner */}
-                      <td className="py-3.5 px-4">
-                        <div className="text-slate-800 font-medium">
-                          {lead.owner?.full_name || "Unassigned"}
-                        </div>
-                        <div className="text-[10px] text-slate-400">SunPower Sales</div>
-                      </td>
-
-                      {/* Action */}
-                      <td className="py-3.5 px-4 text-right">
-                        <Link
-                          href={`/leads/${lead.id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/60 transition-colors"
-                        >
-                          <span>Review</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </GlassCard>
-
-      {/* Manual Lead Creation Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                  <Zap className="w-5 h-5" />
-                </div>
+            {/* Real Form: Telecaller Qualification Checklist */}
+            <div className="card-surface p-5 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Create New Solar Lead</h3>
-                  <p className="text-xs text-slate-500">Record a phone call, walk-in or referral</p>
+                  <h3 className="text-heading font-semibold text-[var(--text-primary)]">
+                    Technical Pre-Qualification Checklist
+                  </h3>
+                  <p className="text-caption text-[var(--text-muted)]">
+                    Telecaller verification form before scheduling field survey.
+                  </p>
+                </div>
+                <div className="px-2.5 py-1 rounded-md bg-[var(--surface-subtle)] border border-[var(--border-subtle)] text-caption font-mono">
+                  Recommended: <strong className="text-[var(--accent-base)]">{recommendedKw} kW</strong>
                 </div>
               </div>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
-              >
-                ✕
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Field 1: Monthly Units */}
+                <div className="space-y-1">
+                  <label className="text-label block">Avg. Monthly Units (kWh)</label>
+                  <input
+                    type="number"
+                    value={checklist.monthly_units}
+                    onChange={(e) => setChecklist({ ...checklist, monthly_units: Number(e.target.value) })}
+                    className="input-standard tabular-nums"
+                  />
+                  <span className="text-caption text-[var(--text-muted)]">
+                    Sug. kW: (units / 115) = {recommendedKw} kW
+                  </span>
+                </div>
+
+                {/* Field 2: Shadow-Free Rooftop Area */}
+                <div className="space-y-1">
+                  <label className="text-label block">Shadow-Free Area (sq. ft.)</label>
+                  <input
+                    type="number"
+                    value={checklist.shadow_free_sqft}
+                    onChange={(e) => setChecklist({ ...checklist, shadow_free_sqft: Number(e.target.value) })}
+                    className="input-standard tabular-nums"
+                  />
+                  <span className="text-caption text-[var(--text-muted)]">
+                    {(checklist.shadow_free_sqft * 0.0929).toFixed(1)} m² usable
+                  </span>
+                </div>
+
+                {/* Field 3: Sanctioned Electricity Load */}
+                <div className="space-y-1">
+                  <label className="text-label block">Sanctioned Grid Load (kW)</label>
+                  <input
+                    type="number"
+                    value={checklist.sanctioned_load_kw}
+                    onChange={(e) => setChecklist({ ...checklist, sanctioned_load_kw: Number(e.target.value) })}
+                    className="input-standard tabular-nums"
+                  />
+                </div>
+
+                {/* Field 4: Consumer Electricity No */}
+                <div className="space-y-1">
+                  <label className="text-label block">Electricity Consumer No.</label>
+                  <input
+                    type="text"
+                    value={checklist.consumer_no}
+                    onChange={(e) => setChecklist({ ...checklist, consumer_no: e.target.value })}
+                    className="input-standard font-mono"
+                  />
+                </div>
+
+                {/* Field 5: Roof Ownership */}
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="roof_ownership"
+                    checked={checklist.roof_ownership === "owned"}
+                    onChange={(e) => setChecklist({ ...checklist, roof_ownership: e.target.checked ? "owned" : "rented" })}
+                    className="w-4 h-4 rounded-sm accent-[var(--accent-base)]"
+                  />
+                  <label htmlFor="roof_ownership" className="text-body-sm font-medium text-[var(--text-primary)] cursor-pointer">
+                    Customer owns rooftop (Not rented / shared)
+                  </label>
+                </div>
+
+                {/* Field 6: Meter Bill Verified */}
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="meter_bill"
+                    checked={checklist.has_meter_bill}
+                    onChange={(e) => setChecklist({ ...checklist, has_meter_bill: e.target.checked })}
+                    className="w-4 h-4 rounded-sm accent-[var(--accent-base)]"
+                  />
+                  <label htmlFor="meter_bill" className="text-body-sm font-medium text-[var(--text-primary)] cursor-pointer">
+                    Recent PSPCL / DHBVN bill copy collected
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Activity Log & Follow-up Scheduler */}
+            <div className="card-surface p-5 space-y-4">
+              <h3 className="text-heading font-semibold text-[var(--text-primary)] pb-2 border-b border-[var(--border-subtle)]">
+                Log Follow-up & Activity
+              </h3>
+
+              <form onSubmit={handleAddNote} className="space-y-3">
+                <textarea
+                  rows={2}
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="Record customer discussion notes (e.g. Requested visit on Saturday morning, confirmed 3 kW)..."
+                  className="w-full p-3 text-body-sm bg-[var(--surface-subtle)] border border-[var(--border-strong)] rounded-md focus:border-[var(--accent-base)] focus:outline-none text-[var(--text-primary)]"
+                />
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Clock className="w-4 h-4 text-[var(--text-muted)]" />
+                    <span className="text-label text-xs">Next Follow-up:</span>
+                    <input
+                      type="date"
+                      value={followupDate}
+                      onChange={(e) => setFollowupDate(e.target.value)}
+                      className="h-8 px-2 text-xs border border-[var(--border-strong)] rounded-md bg-[var(--surface-card)] text-[var(--text-primary)]"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!newNote.trim() || isPending}
+                    className="btn-primary h-9 px-4 text-xs font-semibold w-full sm:w-auto"
+                  >
+                    Save Activity Note
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Modal: Qualify Lead Confirmation */}
+      {showQualifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40" onClick={() => setShowQualifyModal(false)} />
+          <div className="relative card-surface p-6 max-w-md w-full border border-[var(--border-strong)] shadow-[var(--shadow-modal)] space-y-4 z-10">
+            <h3 className="text-title font-semibold text-[var(--text-primary)]">
+              Qualify Lead & Initiate Project
+            </h3>
+            <p className="text-body-sm text-[var(--text-secondary)]">
+              This will create a new solar project for <strong>{selectedLead?.customer?.name}</strong> at <strong>{recommendedKw} kW</strong> and automatically schedule a field survey job.
+            </p>
+            {actionError && (
+              <div className="p-3 rounded-md bg-[var(--danger-subtle)] border border-[var(--danger-border)] text-body-sm text-[var(--danger-text)]">
+                {actionError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowQualifyModal(false)} className="btn-secondary h-10 px-4">
+                Cancel
+              </button>
+              <button onClick={handleQualifyLead} disabled={isPending} className="btn-primary h-10 px-4">
+                {isPending ? "Qualifying..." : "Confirm Qualification"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Close Lead Reason */}
+      {showCloseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40" onClick={() => setShowCloseModal(false)} />
+          <div className="relative card-surface p-6 max-w-md w-full border border-[var(--border-strong)] shadow-[var(--shadow-modal)] space-y-4 z-10">
+            <h3 className="text-title font-semibold text-[var(--text-primary)]">
+              Close Lead with Reason
+            </h3>
+            <p className="text-body-sm text-[var(--text-secondary)]">
+              Leads are never hard-deleted in Arka. Select the reason for closing:
+            </p>
+            <select
+              value={closeReason}
+              onChange={(e) => setCloseReason(e.target.value as any)}
+              className="input-standard"
+            >
+              <option value="lost_to_competitor">Lost to Competitor (Price/Terms)</option>
+              <option value="disqualified_roof">Disqualified (Shaded / Shared Roof)</option>
+              <option value="price_too_high">Price Too High / No Budget</option>
+              <option value="unreachable">Unreachable after 5+ attempts</option>
+            </select>
+            {actionError && (
+              <div className="p-3 rounded-md bg-[var(--danger-subtle)] border border-[var(--danger-border)] text-body-sm text-[var(--danger-text)]">
+                {actionError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowCloseModal(false)} className="btn-secondary h-10 px-4">
+                Cancel
+              </button>
+              <button onClick={handleCloseLead} disabled={isPending} className="btn-secondary h-10 px-4 text-[var(--danger-base)] font-semibold">
+                {isPending ? "Closing..." : "Close Lead"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Create New Lead */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40" onClick={() => setShowCreateModal(false)} />
+          <form onSubmit={handleCreateLead} className="relative card-surface p-6 max-w-lg w-full border border-[var(--border-strong)] shadow-[var(--shadow-modal)] space-y-4 z-10 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-subtle)]">
+              <h3 className="text-title font-semibold text-[var(--text-primary)]">
+                Create New Customer Enquiry
+              </h3>
+              <button type="button" onClick={() => setShowCreateModal(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {formError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
-                <span>{formError}</span>
+              <div className="p-3 rounded-md bg-[var(--danger-subtle)] border border-[var(--danger-border)] text-body-sm text-[var(--danger-text)]">
+                {formError}
               </div>
             )}
 
-            <form onSubmit={handleCreateLead} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    Customer Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Ramesh Kulkarni"
-                    value={newLead.name}
-                    onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500/30 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    Mobile Number * (10 digits)
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="9876543210"
-                    value={newLead.phone}
-                    onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500/30 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Email (Optional)</label>
-                  <input
-                    type="email"
-                    placeholder="customer@email.com"
-                    value={newLead.email}
-                    onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500/30 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">City / Region *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Pune"
-                    value={newLead.city}
-                    onChange={(e) => setNewLead({ ...newLead, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500/30 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Capacity (kW)</label>
-                  <select
-                    value={newLead.requested_kw}
-                    onChange={(e) =>
-                      setNewLead({ ...newLead, requested_kw: Number(e.target.value) })
-                    }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
-                  >
-                    {[1, 2, 3, 4, 5, 8, 10].map((kw) => (
-                      <option key={kw} value={kw}>
-                        {kw} kW
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">System Type</label>
-                  <select
-                    value={newLead.system_type}
-                    onChange={(e) =>
-                      setNewLead({
-                        ...newLead,
-                        system_type: e.target.value as "on_grid" | "off_grid",
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
-                  >
-                    <option value="on_grid">On-Grid (Net Meter)</option>
-                    <option value="off_grid">Off-Grid (Battery)</option>
-                    <option value="hybrid">Hybrid</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Source</label>
-                  <select
-                    value={newLead.source}
-                    onChange={(e) =>
-                      setNewLead({
-                        ...newLead,
-                        source: e.target.value as any,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
-                  >
-                    <option value="call">Inbound Call</option>
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="walk_in">Walk-in</option>
-                    <option value="referral">Referral</option>
-                    <option value="web">Web Form</option>
-                  </select>
-                </div>
-              </div>
-
+            <div className="space-y-3">
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Site Address</label>
+                <label className="text-label block">Full Customer Name *</label>
                 <input
                   type="text"
-                  placeholder="Plot / Society, Landmark, Pin code"
-                  value={newLead.address}
-                  onChange={(e) => setNewLead({ ...newLead, address: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500/30 focus:outline-none"
+                  required
+                  placeholder="e.g. Jaswinder Kaur"
+                  value={newLead.name}
+                  onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
+                  className="input-standard"
                 />
+              </div>
+
+              <PhoneInput
+                label="Customer Phone Number *"
+                value={newLead.phone}
+                onChange={(p) => setNewLead({ ...newLead, phone: p })}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-label block">City / Town</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Jalandhar"
+                    value={newLead.city}
+                    onChange={(e) => setNewLead({ ...newLead, city: e.target.value })}
+                    className="input-standard"
+                  />
+                </div>
+                <div>
+                  <label className="text-label block">Enquiry Source</label>
+                  <select
+                    value={newLead.source}
+                    onChange={(e) => setNewLead({ ...newLead, source: e.target.value as any })}
+                    className="input-standard"
+                  >
+                    <option value="call">Phone Call</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="web">Website Form</option>
+                    <option value="walk_in">Walk-in Office</option>
+                    <option value="referral">Customer Referral</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-label block">Requested System Size (kW)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    max="50"
+                    value={newLead.requested_kw}
+                    onChange={(e) => setNewLead({ ...newLead, requested_kw: parseFloat(e.target.value) || 3.0 })}
+                    className="input-standard tabular-nums"
+                  />
+                </div>
+                <div>
+                  <label className="text-label block">System Type</label>
+                  <select
+                    value={newLead.system_type}
+                    onChange={(e) => setNewLead({ ...newLead, system_type: e.target.value as any })}
+                    className="input-standard"
+                  >
+                    <option value="on_grid">On-Grid (PM Surya Ghar)</option>
+                    <option value="hybrid">Hybrid with Battery</option>
+                    <option value="off_grid">Off-Grid (Stand-alone)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-1">
                 <input
                   type="checkbox"
-                  id="subsidy_check"
+                  id="subsidy"
                   checked={newLead.wants_subsidy}
-                  onChange={(e) =>
-                    setNewLead({ ...newLead, wants_subsidy: e.target.checked })
-                  }
-                  className="rounded text-amber-500 focus:ring-amber-400"
+                  onChange={(e) => setNewLead({ ...newLead, wants_subsidy: e.target.checked })}
+                  className="w-4 h-4 rounded-sm accent-[var(--accent-base)]"
                 />
-                <label htmlFor="subsidy_check" className="text-slate-700 font-medium">
-                  Customer is interested in Central PM Surya Ghar Subsidy
+                <label htmlFor="subsidy" className="text-body-sm text-[var(--text-primary)] cursor-pointer">
+                  Customer wants PM Surya Ghar central subsidy assistance
                 </label>
               </div>
+            </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-medium shadow-md shadow-amber-500/20 disabled:opacity-50"
-                >
-                  {isPending ? "Saving..." : "Create Lead"}
-                </button>
-              </div>
-            </form>
-          </div>
+            <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-subtle)]">
+              <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary h-10 px-4">
+                Cancel
+              </button>
+              <button type="submit" disabled={isPending} className="btn-primary h-10 px-4">
+                {isPending ? "Creating..." : "Create Lead"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

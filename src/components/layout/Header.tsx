@@ -1,156 +1,145 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Bell,
   Sun,
-  Wind,
-  Compass,
-  ArrowRight,
-  ShieldCheck,
-  CheckCircle2,
+  Moon,
+  Type,
+  HelpCircle,
   Clock,
-  Wrench,
-  TrendingUp,
 } from "lucide-react";
+import { CommandPalette } from "../shared/CommandPalette";
 
 interface HeaderProps {
   userName?: string;
-  onSearch?: (query: string) => void;
   unreadNotifications?: number;
 }
 
 export function Header({
   userName = "Priya",
-  onSearch,
-  unreadNotifications = 3,
+  unreadNotifications = 2,
 }: HeaderProps) {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [textSize, setTextSize] = useState<"normal" | "large" | "xlarge">("normal");
   const [showNotifications, setShowNotifications] = useState(false);
 
+  // Toggle Dark Theme
+  const toggleTheme = () => {
+    const nextTheme = theme === "light" ? "dark" : "light";
+    setTheme(nextTheme);
+    if (nextTheme === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.setAttribute("data-theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.setAttribute("data-theme", "light");
+    }
+  };
+
+  // Toggle Text Scale Size
+  const cycleTextSize = () => {
+    const sizes: Array<"normal" | "large" | "xlarge"> = ["normal", "large", "xlarge"];
+    const nextIdx = (sizes.indexOf(textSize) + 1) % sizes.length;
+    const next = sizes[nextIdx];
+    setTextSize(next);
+    document.documentElement.setAttribute("data-text-size", next);
+  };
+
   return (
-    <header className="mb-6 flex flex-col gap-4">
-      {/* Top Bar matching Reference Image */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Left Greeting & Headline */}
-        <div>
-          <div className="text-xs font-semibold text-slate-500 mb-0.5 flex items-center gap-1.5">
-            Good morning, {userName} <span className="animate-wave inline-block">👋</span>
-          </div>
-          <h1 className="text-xl md:text-2xl font-black tracking-tight text-slate-900">
-            Your solar systems & operations are performing{" "}
-            <span className="bg-gradient-to-r from-sky-600 to-blue-700 bg-clip-text text-transparent">
-              excellently
-            </span>
-          </h1>
+    <>
+      <header className="h-16 px-4 sm:px-6 border-b border-[var(--border-subtle)] bg-[var(--surface-card)] flex items-center justify-between gap-4 select-none shrink-0">
+        {/* Left: Global Command Palette Quick Trigger */}
+        <div className="flex items-center gap-3 flex-1 max-w-md">
+          <button
+            onClick={() => setIsCommandOpen(true)}
+            className="w-full h-10 px-3 flex items-center justify-between text-body-sm text-[var(--text-muted)] bg-[var(--surface-subtle)] border border-[var(--border-subtle)] rounded-md hover:border-[var(--border-strong)] transition-colors cursor-pointer text-left"
+          >
+            <div className="flex items-center gap-2">
+              <Search className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+              <span className="truncate">Search serials, quotes, customers...</span>
+            </div>
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-mono text-[var(--text-muted)] bg-[var(--surface-card)] border border-[var(--border-subtle)] rounded-xs">
+              ⌘K
+            </kbd>
+          </button>
         </div>
 
-        {/* Right Search, Notification & Weather Card */}
-        <div className="flex items-center gap-3">
-          {/* Universal Search Bar */}
-          <div className="relative w-56 md:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                onSearch?.(e.target.value);
-              }}
-              placeholder="Search serial, lead, order..."
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/80 backdrop-blur-md border border-white/80 text-xs text-slate-800 placeholder-slate-400 shadow-xs focus:outline-none focus:ring-2 focus:ring-sky-400/50"
-            />
+        {/* Right Tools (Date, Notifications, Theme, Text Size) */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Operations Time Stamp */}
+          <div className="hidden lg:flex items-center gap-1.5 text-caption font-mono text-[var(--text-muted)] tabular-nums">
+            <Clock className="w-3.5 h-3.5" />
+            <span>IST (Asia/Kolkata)</span>
           </div>
 
-          {/* Notification Bell */}
+          <div className="h-4 w-[1px] bg-[var(--border-subtle)] hidden lg:block" />
+
+          {/* Text Size Scale Toggle */}
+          <button
+            onClick={cycleTextSize}
+            className="h-9 px-2 rounded-md border border-[var(--border-subtle)] hover:bg-[var(--surface-subtle)] text-[var(--text-secondary)] text-xs font-semibold flex items-center gap-1 cursor-pointer"
+            title={`Current Text Scale: ${textSize.toUpperCase()} (Click to toggle)`}
+          >
+            <Type className="w-3.5 h-3.5" />
+            <span className="uppercase text-[11px]">{textSize.slice(0, 3)}</span>
+          </button>
+
+          {/* Theme Toggle (Light / Dark) */}
+          <button
+            onClick={toggleTheme}
+            className="w-9 h-9 rounded-md border border-[var(--border-subtle)] hover:bg-[var(--surface-subtle)] text-[var(--text-secondary)] flex items-center justify-center cursor-pointer"
+            title={`Switch to ${theme === "light" ? "Dark" : "Light"} theme`}
+          >
+            {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+
+          {/* Notifications Center */}
           <div className="relative">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2.5 rounded-xl bg-white/80 backdrop-blur-md border border-white/80 text-slate-600 hover:text-sky-600 shadow-xs hover:shadow-md transition-all"
-              aria-label="Notifications"
+              className="w-9 h-9 rounded-md border border-[var(--border-subtle)] hover:bg-[var(--surface-subtle)] text-[var(--text-secondary)] flex items-center justify-center relative cursor-pointer"
+              title="Notifications"
             >
               <Bell className="w-4 h-4" />
               {unreadNotifications > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[var(--accent-base)]" />
               )}
             </button>
 
-            {/* Notification Drawer Preview */}
+            {/* Notification Drawer Popover */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white/95 backdrop-blur-xl border border-white/80 shadow-2xl p-4 z-50 animate-in fade-in zoom-in-95">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <span className="font-bold text-xs text-slate-800">Notifications</span>
-                  <span className="text-[10px] font-semibold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full">
-                    {unreadNotifications} new
-                  </span>
+              <div className="absolute right-0 top-11 w-80 card-surface border border-[var(--border-strong)] shadow-[var(--shadow-dropdown)] p-3 z-30 animate-in fade-in zoom-in-95 duration-100">
+                <div className="flex items-center justify-between pb-2 border-b border-[var(--border-subtle)] text-body-sm font-semibold text-[var(--text-primary)]">
+                  <span>Operational Alerts</span>
+                  <span className="text-caption font-mono text-[var(--accent-base)]">2 pending</span>
                 </div>
-                <div className="divide-y divide-slate-100 py-1 text-xs">
-                  <div className="py-2.5">
-                    <div className="font-semibold text-slate-800">Order Confirmed — Pick-list ready</div>
-                    <div className="text-[11px] text-slate-500">ORD-2627-00001: 3 kW Residential System</div>
+                <div className="divide-y divide-[var(--border-subtle)] max-h-64 overflow-y-auto">
+                  <div className="py-2.5 text-body-sm">
+                    <div className="font-medium text-[var(--text-primary)]">50% Advance Received</div>
+                    <div className="text-caption text-[var(--text-secondary)]">
+                      Order #ORD-2611-0001 confirmed. Pick-list queued for Warehouse.
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">14m ago</div>
                   </div>
-                  <div className="py-2.5">
-                    <div className="font-semibold text-slate-800">Survey Approved for Quote</div>
-                    <div className="text-[11px] text-slate-500">PRJ-2627-00001 (Anita Sharma) approved</div>
-                  </div>
-                  <div className="py-2.5">
-                    <div className="font-semibold text-slate-800">Delivery Confirmed</div>
-                    <div className="text-[11px] text-slate-500">Warranty clocks started for 6 units</div>
+                  <div className="py-2.5 text-body-sm">
+                    <div className="font-medium text-[var(--text-primary)]">Survey Submitted</div>
+                    <div className="text-caption text-[var(--text-secondary)]">
+                      Vikram Patel submitted rooftop survey for Anita Sharma (3.3 kW).
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)] mt-1 font-mono">1h ago</div>
                   </div>
                 </div>
               </div>
             )}
           </div>
-
-          {/* Weather & Solar Irradiance Pill (Direct from Reference Image) */}
-          <div className="hidden lg:flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-white/80 backdrop-blur-md border border-white/80 shadow-xs text-xs">
-            <div className="flex items-center gap-1.5 text-amber-500 font-bold">
-              <Sun className="w-4 h-4 animate-spin-slow" />
-              <span>24°C</span>
-            </div>
-            <div className="h-4 w-px bg-slate-200" />
-            <div className="flex flex-col text-[10px] text-slate-500">
-              <span>
-                Irradiance: <strong className="text-slate-700">850 W/m²</strong>
-              </span>
-              <span>
-                Wind: <strong className="text-slate-700">12 km/h</strong>
-              </span>
-            </div>
-          </div>
         </div>
-      </div>
+      </header>
 
-      {/* Golden Thread Interactive Chain Banner */}
-      <div className="p-2.5 px-4 rounded-xl bg-gradient-to-r from-sky-500/10 via-blue-500/10 to-emerald-500/10 border border-sky-200/50 backdrop-blur-md flex flex-wrap items-center justify-between text-xs font-semibold text-slate-700 shadow-xs">
-        <div className="flex items-center gap-2 text-sky-800 font-bold">
-          <ShieldCheck className="w-4 h-4 text-sky-600" />
-          <span>The Golden Thread:</span>
-        </div>
-
-        <div className="flex items-center gap-1.5 md:gap-3 flex-wrap">
-          <span className="flex items-center gap-1 text-slate-800">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Serial Number
-          </span>
-          <ArrowRight className="w-3 h-3 text-slate-400" />
-          <span className="flex items-center gap-1 text-slate-800">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Customer Asset
-          </span>
-          <ArrowRight className="w-3 h-3 text-slate-400" />
-          <span className="flex items-center gap-1 text-slate-800">
-            <Clock className="w-3.5 h-3.5 text-sky-600" /> 20-Yr Warranty Clock
-          </span>
-          <ArrowRight className="w-3 h-3 text-slate-400" />
-          <span className="flex items-center gap-1 text-slate-800">
-            <Wrench className="w-3.5 h-3.5 text-indigo-600" /> Service Ticket
-          </span>
-          <ArrowRight className="w-3 h-3 text-slate-400" />
-          <span className="flex items-center gap-1 text-emerald-700 font-bold bg-emerald-100/60 px-2 py-0.5 rounded-full">
-            <TrendingUp className="w-3.5 h-3.5" /> Job Profit & Margin
-          </span>
-        </div>
-      </div>
-    </header>
+      {/* Global Command Palette */}
+      <CommandPalette isOpen={isCommandOpen} onClose={() => setIsCommandOpen(false)} />
+    </>
   );
 }

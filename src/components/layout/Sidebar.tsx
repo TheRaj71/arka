@@ -1,15 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import {
   LayoutDashboard,
   Users,
-  FolderKanban,
-  FileCheck2,
-  Receipt,
+  FileSpreadsheet,
   ShoppingCart,
   CreditCard,
   Boxes,
@@ -20,13 +18,11 @@ import {
   FileText,
   BadgePercent,
   Settings,
-  ShieldCheck,
-  Sparkles,
+  ChevronLeft,
   ChevronRight,
-  SunMedium,
-  Zap,
+  Palette,
+  FileCheck2,
 } from "lucide-react";
-import { clsx } from "clsx";
 import { type AppRole } from "@/lib/auth/permissions";
 
 interface SidebarProps {
@@ -34,139 +30,215 @@ interface SidebarProps {
   userName?: string;
   userEmail?: string;
   onRoleChange?: (role: AppRole) => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ currentRole, userName = "Priya Sharma", userEmail = "director@demo.local", onRoleChange }: SidebarProps) {
+interface NavItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: AppRole[];
+  badge?: string;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+export function Sidebar({
+  currentRole,
+  userName = "Priya Sharma",
+  userEmail = "director@demo.local",
+  onRoleChange,
+  isCollapsed = false,
+  onToggleCollapse,
+}: SidebarProps) {
   const pathname = usePathname();
 
-  const navigation = [
-    { name: "Overview", href: "/dashboard", icon: LayoutDashboard, roles: ["director", "manager", "accounts"] },
-    { name: "Approvals", href: "/approvals", icon: ShieldCheck, roles: ["director", "manager"], badge: "2" },
-    { name: "Leads Funnel", href: "/leads", icon: Users, roles: ["director", "manager", "sales"] },
-    { name: "Projects", href: "/projects", icon: FolderKanban, roles: ["director", "manager", "sales", "technician", "warehouse", "support", "accounts"] },
-    { name: "Surveys", href: "/surveys", icon: FileCheck2, roles: ["director", "manager", "technician"] },
-    { name: "Quote Engine", href: "/quotes", icon: Receipt, roles: ["director", "manager", "sales", "accounts"] },
-    { name: "Orders", href: "/orders", icon: ShoppingCart, roles: ["director", "manager", "sales", "support", "accounts"] },
-    { name: "Payments", href: "/payments", icon: CreditCard, roles: ["director", "manager", "accounts"] },
-    { name: "Inventory", href: "/inventory", icon: Boxes, roles: ["director", "manager", "warehouse", "accounts"] },
-    { name: "Warehouse & Scan", href: "/warehouse", icon: Truck, roles: ["director", "manager", "warehouse"] },
-    { name: "Field PWA", href: "/field", icon: Wrench, roles: ["director", "manager", "technician"] },
-    { name: "Technician Schedule", href: "/schedule", icon: CalendarDays, roles: ["director", "manager", "technician"] },
-    { name: "Service & Warranty", href: "/service", icon: Headphones, roles: ["director", "manager", "support", "technician"] },
-    { name: "Invoices", href: "/invoices", icon: FileText, roles: ["director", "manager", "accounts", "support"] },
-    { name: "Subsidy Tracker", href: "/subsidy", icon: BadgePercent, roles: ["director", "manager", "accounts"] },
-    { name: "Settings", href: "/settings", icon: Settings, roles: ["director"] },
+  const groups: NavGroup[] = [
+    {
+      label: "Overview",
+      items: [
+        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["director", "manager", "accounts"] },
+      ],
+    },
+    {
+      label: "Sales",
+      items: [
+        { name: "Leads Funnel", href: "/leads", icon: Users, roles: ["director", "manager", "sales"] },
+        { name: "Quotes", href: "/quotes", icon: FileSpreadsheet, roles: ["director", "manager", "sales", "accounts"] },
+        { name: "Orders", href: "/orders", icon: ShoppingCart, roles: ["director", "manager", "sales", "support", "accounts"] },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        { name: "Surveys", href: "/surveys", icon: FileCheck2, roles: ["director", "manager", "technician"] },
+        { name: "Schedule", href: "/schedule", icon: CalendarDays, roles: ["director", "manager", "technician"] },
+        { name: "Warehouse & Scan", href: "/warehouse", icon: Truck, roles: ["director", "manager", "warehouse"] },
+        { name: "Inventory", href: "/inventory", icon: Boxes, roles: ["director", "manager", "warehouse", "accounts"] },
+      ],
+    },
+    {
+      label: "Field",
+      items: [
+        { name: "Technician PWA", href: "/field", icon: Wrench, roles: ["director", "manager", "technician"] },
+      ],
+    },
+    {
+      label: "Customer & Service",
+      items: [
+        { name: "Service Desk", href: "/service", icon: Headphones, roles: ["director", "manager", "support", "technician"] },
+      ],
+    },
+    {
+      label: "Finance",
+      items: [
+        { name: "Payments", href: "/payments", icon: CreditCard, roles: ["director", "manager", "accounts"] },
+        { name: "Invoices", href: "/invoices", icon: FileText, roles: ["director", "manager", "accounts", "support"] },
+        { name: "Subsidy Tracker", href: "/subsidy", icon: BadgePercent, roles: ["director", "manager", "accounts"] },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        { name: "Settings", href: "/settings", icon: Settings, roles: ["director"] },
+        { name: "Design System", href: "/design", icon: Palette, roles: ["director", "manager"] },
+      ],
+    },
   ];
 
-  // Filter navigation by role
-  const allowedNav = navigation.filter(
-    (item) => currentRole === "director" || item.roles.includes(currentRole)
-  );
-
   return (
-    <aside className="w-64 shrink-0 flex flex-col justify-between py-2 pr-4 border-r border-slate-200/50">
-      {/* Top Logo */}
-      <div className="px-3 mb-6">
-        <Link href="/dashboard" className="flex items-center gap-2.5 group">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-sky-500/25 group-hover:scale-105 transition-transform">
-            <SunMedium className="w-6 h-6 animate-pulse" />
-          </div>
-          <div>
-            <div className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-slate-900 via-sky-900 to-blue-900 bg-clip-text text-transparent">
-              SunPower Arka
+    <aside
+      className={`shrink-0 flex flex-col justify-between bg-[var(--surface-card)] border-r border-[var(--border-subtle)] transition-all duration-200 select-none ${
+        isCollapsed ? "w-[72px]" : "w-[260px]"
+      }`}
+    >
+      {/* Top Workspace Header */}
+      <div>
+        <div className="h-16 px-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
+          <Link href="/dashboard" className="flex items-center gap-3 overflow-hidden">
+            {/* Custom Arka Monogram Badge */}
+            <div className="w-8 h-8 rounded-md bg-[var(--accent-base)] flex items-center justify-center text-[var(--text-inverse)] font-bold text-base tracking-tighter shrink-0">
+              A
             </div>
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-sky-600 flex items-center gap-1">
-              <Zap className="w-2.5 h-2.5" /> Solar Enterprise
-            </div>
-          </div>
-        </Link>
-      </div>
-
-      {/* Nav List */}
-      <nav className="flex-1 space-y-1 overflow-y-auto px-2 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
-        {allowedNav.map((item) => {
-          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={clsx(
-                "flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all group",
-                isActive
-                  ? "bg-sky-500/15 text-sky-900 font-semibold shadow-xs border border-sky-300/40"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <item.icon
-                  className={clsx(
-                    "w-4 h-4 transition-colors",
-                    isActive ? "text-sky-600" : "text-slate-400 group-hover:text-slate-600"
-                  )}
-                />
-                <span>{item.name}</span>
-              </div>
-              {item.badge && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500 text-white">
-                  {item.badge}
+            {!isCollapsed && (
+              <div className="flex flex-col truncate">
+                <span className="font-semibold text-body tracking-tight text-[var(--text-primary)] leading-tight">
+                  Arka
                 </span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Clean Energy Promo Card (Matched to Reference Image) */}
-      <div className="mt-4 px-2">
-        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-sky-500/10 via-blue-500/5 to-white/70 border border-sky-200/50 backdrop-blur-md shadow-xs">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-            <span className="text-[11px] font-bold text-sky-900 uppercase tracking-wide">
-              Clean Energy Impact
-            </span>
-          </div>
-          <p className="text-xs text-slate-600 leading-relaxed mb-2.5">
-            428.6 tons CO₂ offset this year across 40+ rooftop sites.
-          </p>
-          <Link
-            href="/track/demo"
-            className="text-xs font-semibold text-sky-600 hover:text-sky-700 flex items-center gap-1 group"
-          >
-            Solar Journey <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                <span className="text-[11px] text-[var(--text-muted)] truncate">
+                  SunPower Solutions
+                </span>
+              </div>
+            )}
           </Link>
+
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className="p-1 rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-subtle)] cursor-pointer"
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </button>
+          )}
         </div>
+
+        {/* Navigation Groups */}
+        <nav className="p-3 space-y-5 overflow-y-auto max-h-[calc(100vh-140px)] scrollbar-thin">
+          {groups.map((group) => {
+            const allowedItems = group.items.filter(
+              (item) => currentRole === "director" || item.roles.includes(currentRole)
+            );
+            if (allowedItems.length === 0) return null;
+
+            return (
+              <div key={group.label} className="space-y-1">
+                {!isCollapsed && (
+                  <div className="px-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                    {group.label}
+                  </div>
+                )}
+                {allowedItems.map((item) => {
+                  const isActive =
+                    pathname === item.href ||
+                    (item.href !== "/dashboard" && pathname.startsWith(item.href));
+
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      title={isCollapsed ? item.name : undefined}
+                      className={`relative flex items-center gap-3 px-3 h-11 rounded-md text-body-sm font-medium transition-colors ${
+                        isActive
+                          ? "bg-[var(--accent-subtle)] text-[var(--accent-text)] font-semibold"
+                          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-subtle)]"
+                      } ${isCollapsed ? "justify-center px-0" : ""}`}
+                    >
+                      {isActive && (
+                        <span
+                          className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-md bg-[var(--accent-base)]"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <item.icon
+                        className={`w-5 h-5 shrink-0 ${
+                          isActive ? "text-[var(--accent-base)]" : "text-[var(--text-muted)]"
+                        }`}
+                      />
+                      {!isCollapsed && <span className="flex-1 truncate">{item.name}</span>}
+                      {!isCollapsed && item.badge && (
+                        <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-[var(--accent-subtle)] text-[var(--accent-text)]">
+                          {item.badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </nav>
       </div>
 
-      {/* User Profile Pill & Role Switcher */}
-      <div className="mt-4 pt-3 border-t border-slate-200/60 px-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+      {/* Bottom User Pill */}
+      <div className="p-3 border-t border-[var(--border-subtle)] bg-[var(--surface-card)]">
+        <div className={`flex items-center gap-3 ${isCollapsed ? "justify-center" : "justify-between"}`}>
+          <div className="flex items-center gap-2.5 overflow-hidden">
             <UserButton
               appearance={{
                 elements: {
-                  avatarBox: "w-9 h-9 shadow-xs",
+                  avatarBox: "w-8 h-8 rounded-md",
                 },
               }}
             />
-            <div className="text-left overflow-hidden">
-              <div className="text-xs font-bold text-slate-800 truncate">{userName}</div>
-              <div className="text-[10px] font-medium text-slate-500 capitalize">{currentRole}</div>
-            </div>
+            {!isCollapsed && (
+              <div className="truncate text-left">
+                <div className="text-body-sm font-medium text-[var(--text-primary)] truncate">
+                  {userName}
+                </div>
+                <div className="text-[11px] text-[var(--text-muted)] capitalize truncate">
+                  {currentRole}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Quick Role Switcher for Testing/Demo */}
-          {onRoleChange && (
+          {!isCollapsed && onRoleChange && (
             <select
               value={currentRole}
               onChange={(e) => onRoleChange(e.target.value as AppRole)}
-              className="text-[10px] font-semibold bg-white/80 border border-slate-200 text-slate-700 rounded-lg px-2 py-1 shadow-xs hover:border-sky-300 focus:outline-none"
-              title="Switch demo role to test role permissions"
+              className="text-[11px] font-medium bg-[var(--surface-subtle)] border border-[var(--border-subtle)] text-[var(--text-secondary)] rounded-md px-1.5 py-1 focus:outline-none hover:border-[var(--border-strong)] cursor-pointer"
+              title="Switch demo persona for testing"
             >
               <option value="director">Director</option>
               <option value="manager">Manager</option>
               <option value="sales">Sales</option>
-              <option value="technician">Technician</option>
-              <option value="warehouse">Warehouse</option>
+              <option value="technician">Tech</option>
+              <option value="warehouse">Store</option>
               <option value="support">Support</option>
               <option value="accounts">Accounts</option>
             </select>

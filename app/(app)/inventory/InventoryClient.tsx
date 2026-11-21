@@ -1,21 +1,24 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import { GlassCard } from "@/components/ui/glass-card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { receiveStock } from "@/modules/inventory/actions";
+import Link from "next/link";
 import { type CatalogueProduct } from "@/modules/inventory/queries";
+import { receiveStock } from "@/modules/inventory/actions";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatCard } from "@/components/shared/StatCard";
+import { DataTable, type Column } from "@/components/shared/DataTable";
+import { MoneyInput } from "@/components/ui/MoneyInput";
+import { formatPaise } from "@/lib/formatters";
 import {
   Boxes,
-  Search,
   Plus,
-  Barcode,
-  ShieldCheck,
-  AlertTriangle,
-  CheckCircle2,
   Package,
+  Barcode,
   Layers,
+  CheckCircle2,
+  AlertTriangle,
   ArrowRight,
+  Truck,
 } from "lucide-react";
 
 interface InventoryClientProps {
@@ -23,34 +26,31 @@ interface InventoryClientProps {
 }
 
 export function InventoryClient({ products: initialProducts }: InventoryClientProps) {
-  const [products, setProducts] = useState<CatalogueProduct[]>(initialProducts);
+  const [products] = useState<CatalogueProduct[]>(initialProducts);
   const [activeCategory, setActiveCategory] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState<string>("");
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // Receive form state
+  // Inward Goods Receipt Form
   const [receiveForm, setReceiveForm] = useState({
     productId: products[0]?.id || "",
     invoiceNo: "INV-REC-" + Date.now().toString().slice(-4),
-    unitCostRupees: 8500,
+    unitCostPaise: 850000, // ₹8,500
     serialsInput: "",
     qty: 6,
   });
   const [receiveSuccess, setReceiveSuccess] = useState<string | null>(null);
 
+  const selectedProduct = products.find((p) => p.id === receiveForm.productId);
+
   const filteredProducts = products.filter((p) => {
     if (activeCategory !== "all" && p.category !== activeCategory) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchName = p.name.toLowerCase().includes(q);
-      const matchSku = p.sku.toLowerCase().includes(q);
-      if (!matchName && !matchSku) return false;
-    }
     return true;
   });
 
-  const selectedProduct = products.find((p) => p.id === receiveForm.productId);
+  const totalInStock = products.reduce((acc, p) => acc + (p.in_stock || 0), 0);
+  const lowStockCount = products.filter((p) => p.available <= 2).length;
+  const serialisedCount = products.filter((p) => p.is_serialised).length;
 
   const handleReceiveStock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,201 +66,246 @@ export function InventoryClient({ products: initialProducts }: InventoryClientPr
     startTransition(async () => {
       const res = await receiveStock({
         product_id: receiveForm.productId,
-        unit_cost_paise: receiveForm.unitCostRupees * 100,
+        unit_cost_paise: receiveForm.unitCostPaise,
         invoice_no: receiveForm.invoiceNo,
         serials,
         qty: selectedProduct?.is_serialised ? serials.length : receiveForm.qty,
       });
 
       if (res.ok) {
-        setReceiveSuccess("Stock successfully inwarded and available for reservation.");
+        setReceiveSuccess(
+          `Stock successfully inwarded for ${selectedProduct?.name || "Product"}.`
+        );
         setShowReceiveModal(false);
       }
     });
   };
 
+  const columns: Column<CatalogueProduct>[] = [
+    {
+      key: "name",
+      header: "SKU & Description",
+      render: (item: CatalogueProduct) => (
+        <div>
+          <div className="font-medium text-text-primary text-body-sm">{item.name}</div>
+          <div className="font-mono text-caption text-text-tertiary mt-0.5">{item.sku}</div>
+        </div>
+      ),
+    },
+    {
+      key: "category",
+      header: "Category",
+      render: (item: CatalogueProduct) => {
+        const labels: Record<string, string> = {
+          solar_panel: "Solar Panels",
+          inverter: "Inverters",
+          battery: "Batteries",
+          structure: "Mounting Kits",
+          bos: "BOS Electricals",
+        };
+        return (
+          <span className="text-caption font-medium px-2.5 py-1 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] text-text-secondary border border-[var(--border-subtle)]">
+            {labels[item.category] || item.category}
+          </span>
+        );
+      },
+    },
+    {
+      key: "is_serialised",
+      header: "Tracking",
+      render: (item: CatalogueProduct) => (
+        <span
+          className={`font-mono text-caption font-medium px-2 py-0.5 rounded-[var(--radius-control)] ${
+            item.is_serialised
+              ? "bg-[var(--accent-subtle)] text-[var(--accent-base)] border border-[var(--border-subtle)]"
+              : "text-text-tertiary"
+          }`}
+        >
+          {item.is_serialised ? "Serialised" : "Bulk Qty"}
+        </span>
+      ),
+    },
+    {
+      key: "warranty_months",
+      header: "Warranty",
+      align: "right",
+      render: (item: CatalogueProduct) => (
+        <span className="font-mono text-body-sm text-text-secondary tabular-nums">
+          {item.warranty_months} Mo.
+        </span>
+      ),
+    },
+    {
+      key: "in_stock",
+      header: "In Stock",
+      align: "right",
+      render: (item: CatalogueProduct) => (
+        <span className="font-mono text-body-sm text-text-primary tabular-nums">
+          {item.in_stock} {item.uom}
+        </span>
+      ),
+    },
+    {
+      key: "reserved",
+      header: "Reserved",
+      align: "right",
+      render: (item: CatalogueProduct) => (
+        <span className="font-mono text-body-sm text-amber-700 dark:text-amber-400 tabular-nums">
+          {item.reserved}
+        </span>
+      ),
+    },
+    {
+      key: "available",
+      header: "Available",
+      align: "right",
+      render: (item: CatalogueProduct) => {
+        const isLow = item.available <= 2;
+        return (
+          <span
+            className={`font-mono font-semibold text-body-sm tabular-nums ${
+              isLow
+                ? "text-rose-700 dark:text-rose-400"
+                : "text-emerald-700 dark:text-emerald-400"
+            }`}
+          >
+            {item.available}
+          </span>
+        );
+      },
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Operations", href: "/dashboard" },
+          { label: "Hardware Inventory" },
+        ]}
+        title="Hardware Catalogue & Stock Ledger"
+        description="Serial-level inventory tracking for panels, inverters & batteries. Append-only stock movements and warehouse ledger."
+        actions={
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Inventory & Hardware Catalogue
-            </h1>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-              {products.length} Products Tracked
-            </span>
+            <Link
+              href="/warehouse"
+              className="inline-flex items-center gap-2 h-11 px-4 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] hover:bg-[var(--border-subtle)] text-text-primary text-body-sm font-medium border border-[var(--border-subtle)] transition-colors"
+            >
+              <Truck className="w-4 h-4 text-text-secondary" />
+              <span>Dispatch Station</span>
+            </Link>
+            <button
+              onClick={() => setShowReceiveModal(true)}
+              className="inline-flex items-center gap-2 h-11 px-5 rounded-[var(--radius-control)] bg-[var(--accent-base)] hover:bg-[var(--accent-hover)] text-white text-body font-medium transition-colors shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Inward New Stock (GRN)</span>
+            </button>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Serial-level inventory tracking for panels, inverters & batteries. Append-only stock movements.
-          </p>
-        </div>
+        }
+      />
 
-        <button
-          onClick={() => setShowReceiveModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs shadow-md shadow-amber-500/20 transition-all hover:scale-[1.02]"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Inward New Stock (Goods Receipt)</span>
-        </button>
+      {/* KPI Stats Strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="Active SKUs Tracked"
+          value={products.length}
+          helperText="Catalogue item types"
+        />
+        <StatCard
+          label="Total Units In Stock"
+          value={totalInStock}
+          helperText="Available in central store"
+          variant="highlight"
+        />
+        <StatCard
+          label="Serialised Hardware"
+          value={serialisedCount}
+          helperText="Tracked with QR/barcodes"
+        />
+        <StatCard
+          label="Low Stock Alerts"
+          value={lowStockCount}
+          helperText="Items with ≤ 2 available"
+          variant={lowStockCount > 0 ? "warning" : "default"}
+        />
       </div>
 
       {receiveSuccess && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="p-4 rounded-[var(--radius-control)] bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-body-sm flex items-center gap-2.5">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <span>{receiveSuccess}</span>
         </div>
       )}
 
-      {/* Filter Tabs & Search */}
-      <GlassCard className="p-3">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-            {[
-              { id: "all", label: "All Equipment" },
-              { id: "panel", label: "Solar Panels" },
-              { id: "inverter", label: "Inverters" },
-              { id: "battery", label: "Batteries" },
-              { id: "bos", label: "BOS Hardware & Cables" },
-              { id: "structure", label: "Mounting Structures" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveCategory(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                  activeCategory === tab.id
-                    ? "bg-slate-900 text-white shadow-sm"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+      {/* Category Filter Tabs */}
+      <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2 text-body-sm font-medium text-text-secondary overflow-x-auto">
+        {[
+          { id: "all", label: `All Products (${products.length})` },
+          { id: "solar_panel", label: "Solar Panels" },
+          { id: "inverter", label: "Inverters" },
+          { id: "battery", label: "Batteries" },
+          { id: "structure", label: "Mounting Kits" },
+          { id: "bos", label: "BOS Electricals" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveCategory(tab.id)}
+            className={`px-3 py-1.5 rounded-[var(--radius-control)] transition-colors whitespace-nowrap ${
+              activeCategory === tab.id
+                ? "bg-[var(--surface-subtle)] text-text-primary font-semibold border border-[var(--border-strong)]"
+                : "hover:text-text-primary"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-          <div className="relative min-w-[240px] max-w-sm">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by SKU, product name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-white/70 border border-slate-200/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-slate-800 placeholder-slate-400 shadow-inner"
-            />
-          </div>
-        </div>
-      </GlassCard>
+      {/* Products DataTable */}
+      <div className="rounded-[var(--radius-card)] bg-[var(--surface-card)] border border-[var(--border-subtle)] overflow-hidden">
+        <DataTable
+          columns={columns}
+          data={filteredProducts}
+          searchPlaceholder="Search by SKU or product name..."
+          searchColumn="name"
+          pageSize={10}
+        />
+      </div>
 
-      {/* Catalogue Table */}
-      <GlassCard className="overflow-hidden p-0 border border-slate-200/70">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
-                <th className="py-3 px-4">Product & Model</th>
-                <th className="py-3 px-4">Tracking Mode</th>
-                <th className="py-3 px-4">Standard Warranty</th>
-                <th className="py-3 px-4 text-center">In Stock</th>
-                <th className="py-3 px-4 text-center">Reserved for Orders</th>
-                <th className="py-3 px-4 text-center">Available Stock</th>
-                <th className="py-3 px-4 text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100/80">
-              {filteredProducts.map((p) => {
-                const isLowStock = p.available <= 5;
-
-                return (
-                  <tr key={p.id} className="hover:bg-slate-50/50">
-                    <td className="py-3.5 px-4">
-                      <div className="font-semibold text-slate-900">{p.name}</div>
-                      <div className="font-mono text-[10px] text-slate-400 mt-0.5">{p.sku}</div>
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      {p.is_serialised ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                          <Barcode className="w-3 h-3 text-amber-700" />
-                          <span>Serialised (QR/Barcode)</span>
-                        </span>
-                      ) : (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                          Bulk ({p.uom})
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="py-3.5 px-4 font-semibold text-slate-700">
-                      {p.warranty_months >= 120
-                        ? `${p.warranty_months / 12} Years (Performance)`
-                        : `${p.warranty_months / 12} Years`}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
-                      {p.in_stock} {p.uom}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center font-mono text-amber-600 font-semibold">
-                      {p.reserved} {p.uom}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="font-mono font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
-                        {p.available} {p.uom}
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-right">
-                      {isLowStock ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">
-                          Low Stock
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          Sufficient
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </GlassCard>
-
-      {/* Receive Stock Modal */}
+      {/* Inward Stock (Goods Receipt Note) Modal */}
       {showReceiveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                  <Package className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Goods Receipt Inward</h3>
-                  <p className="text-xs text-slate-500">Record incoming hardware & serial numbers</p>
-                </div>
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-[var(--radius-card)] bg-[var(--surface-card)] border border-[var(--border-subtle)] p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
+              <div>
+                <h3 className="text-title font-semibold text-text-primary">
+                  Inward New Stock (Goods Receipt)
+                </h3>
+                <p className="text-caption text-text-secondary">
+                  Record supplier consignment and register hardware serial numbers
+                </p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowReceiveModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
+                className="text-text-tertiary hover:text-text-primary text-body font-semibold"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleReceiveStock} className="space-y-4 text-xs">
+            <form onSubmit={handleReceiveStock} className="space-y-4">
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Select Product *</label>
+                <label className="block text-label text-text-primary mb-1.5 font-medium">
+                  Select Product SKU
+                </label>
                 <select
                   value={receiveForm.productId}
                   onChange={(e) =>
                     setReceiveForm({ ...receiveForm, productId: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                  className="w-full h-11 px-3 rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-[var(--surface-card)] text-text-primary text-body focus:outline-none focus:ring-2 focus:ring-[var(--accent-base)]"
                 >
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -272,7 +317,9 @@ export function InventoryClient({ products: initialProducts }: InventoryClientPr
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Supplier Invoice #</label>
+                  <label className="block text-label text-text-primary mb-1.5 font-medium">
+                    Supplier Invoice / Challan #
+                  </label>
                   <input
                     type="text"
                     required
@@ -280,75 +327,73 @@ export function InventoryClient({ products: initialProducts }: InventoryClientPr
                     onChange={(e) =>
                       setReceiveForm({ ...receiveForm, invoiceNo: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono"
+                    className="w-full h-11 px-3 rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-[var(--surface-card)] text-text-primary text-body font-mono focus:outline-none focus:ring-2 focus:ring-[var(--accent-base)]"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Unit Cost (₹)</label>
-                  <input
-                    type="number"
-                    value={receiveForm.unitCostRupees}
-                    onChange={(e) =>
-                      setReceiveForm({
-                        ...receiveForm,
-                        unitCostRupees: Number(e.target.value),
-                      })
+                  <label className="block text-label text-text-primary mb-1.5 font-medium">
+                    Unit Cost (Excl. Tax)
+                  </label>
+                  <MoneyInput
+                    valueInPaise={receiveForm.unitCostPaise}
+                    onChangePaise={(paise) =>
+                      setReceiveForm({ ...receiveForm, unitCostPaise: paise })
                     }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono"
                   />
                 </div>
               </div>
 
               {selectedProduct?.is_serialised ? (
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    Serial Numbers * (Paste or type comma/newline separated)
+                  <label className="block text-label text-text-primary mb-1.5 font-medium">
+                    Hardware Serial Numbers (Comma or Newline separated)
                   </label>
                   <textarea
                     rows={4}
                     required
-                    placeholder="SP-PAN-2026-0001, SP-PAN-2026-0002..."
+                    placeholder={"SP-PAN-2026-0101\nSP-PAN-2026-0102\nSP-PAN-2026-0103"}
                     value={receiveForm.serialsInput}
                     onChange={(e) =>
                       setReceiveForm({ ...receiveForm, serialsInput: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono text-xs focus:ring-2 focus:ring-amber-500/30"
+                    className="w-full p-3 rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-[var(--surface-card)] text-text-primary text-body font-mono text-body-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent-base)]"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    Each serial unit is assigned an individual asset lifecycle and warranty record.
-                  </span>
+                  <p className="text-caption text-text-tertiary mt-1">
+                    Each serial unit is registered into inventory as an individual asset for warranty tracking.
+                  </p>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
-                    Quantity Received ({selectedProduct?.uom}) *
+                  <label className="block text-label text-text-primary mb-1.5 font-medium">
+                    Consignment Quantity
                   </label>
                   <input
                     type="number"
-                    required
+                    min={1}
                     value={receiveForm.qty}
                     onChange={(e) =>
                       setReceiveForm({ ...receiveForm, qty: Number(e.target.value) })
                     }
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono"
+                    className="w-full h-11 px-3 rounded-[var(--radius-control)] border border-[var(--border-strong)] bg-[var(--surface-card)] text-text-primary text-body focus:outline-none focus:ring-2 focus:ring-[var(--accent-base)]"
                   />
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-subtle)]">
                 <button
                   type="button"
                   onClick={() => setShowReceiveModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-medium"
+                  className="h-11 px-4 rounded-[var(--radius-control)] border border-[var(--border-subtle)] text-text-secondary hover:text-text-primary text-body-sm font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isPending}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-md shadow-amber-500/20 disabled:opacity-50"
+                  className="h-11 px-5 rounded-[var(--radius-control)] bg-[var(--accent-base)] hover:bg-[var(--accent-hover)] text-white text-body font-medium transition-colors disabled:opacity-50"
                 >
-                  {isPending ? "Inwarding..." : "Record Inward Stock"}
+                  {isPending ? "Recording Goods Receipt..." : "Record Goods Receipt (GRN)"}
                 </button>
               </div>
             </form>

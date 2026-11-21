@@ -7,6 +7,7 @@ import {
   Area,
   XAxis,
   YAxis,
+  CartesianGrid,
   Tooltip,
 } from "recharts";
 
@@ -16,47 +17,46 @@ interface DashboardChartsProps {
 
 export function DashboardCharts({ curveData }: DashboardChartsProps) {
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full min-h-[260px]">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={curveData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-          <defs>
-            <linearGradient id="energyCurve" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#0284c7" stopOpacity={0.6} />
-              <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.02} />
-            </linearGradient>
-          </defs>
+        <AreaChart data={curveData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-subtle)" />
           <XAxis
             dataKey="time"
-            stroke="#94a3b8"
-            fontSize={10}
+            stroke="var(--text-muted)"
+            fontSize={12}
             tickLine={false}
-            axisLine={false}
+            axisLine={{ stroke: "var(--border-subtle)" }}
+            dy={8}
           />
           <YAxis
-            stroke="#94a3b8"
-            fontSize={10}
+            stroke="var(--text-muted)"
+            fontSize={12}
             tickLine={false}
             axisLine={false}
             tickFormatter={(val) => `${val} kW`}
+            dx={-4}
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: "rgba(255, 255, 255, 0.9)",
-              borderRadius: "12px",
-              border: "1px solid rgba(255, 255, 255, 0.8)",
-              boxShadow: "0 10px 25px rgba(0, 0, 0, 0.08)",
-              fontSize: "11px",
-              fontWeight: 600,
+              backgroundColor: "var(--surface-card)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border-strong)",
+              boxShadow: "var(--shadow-dropdown)",
+              color: "var(--text-primary)",
+              fontSize: "13px",
+              padding: "8px 12px",
             }}
-            formatter={(value: any) => [`${value} kW`, "Solar Power"]}
+            formatter={(value: any) => [`${value} kW`, "Generation"]}
+            labelStyle={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}
           />
           <Area
             type="monotone"
             dataKey="outputKw"
-            stroke="#0284c7"
-            strokeWidth={3}
-            fillOpacity={1}
-            fill="url(#energyCurve)"
+            stroke="#0F766E"
+            strokeWidth={2}
+            fill="#0F766E"
+            fillOpacity={0.08}
           />
         </AreaChart>
       </ResponsiveContainer>

@@ -2,11 +2,9 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { GlassCard } from "@/components/ui/glass-card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { formatIstDate } from "@/lib/time";
 import { type FieldJobItem } from "@/modules/field/queries";
+import { StatusPill } from "@/components/shared/StatusPill";
+import { formatDateTimeIST, getPhoneActions } from "@/lib/formatters";
 import {
   Wrench,
   Phone,
@@ -14,10 +12,9 @@ import {
   CheckCircle2,
   Clock,
   Compass,
-  AlertTriangle,
   ArrowRight,
-  Wifi,
-  Sparkles,
+  Sun,
+  ShieldAlert,
   Zap,
 } from "lucide-react";
 
@@ -26,9 +23,9 @@ interface FieldClientProps {
 }
 
 export function FieldClient({ jobs: initialJobs }: FieldClientProps) {
-  const router = useRouter();
   const [jobs] = useState<FieldJobItem[]>(initialJobs);
   const [filterType, setFilterType] = useState<string>("all");
+  const [outdoorHighContrast, setOutdoorHighContrast] = useState<boolean>(false);
 
   const filtered = jobs.filter((j) => {
     if (filterType !== "all" && j.type !== filterType) return false;
@@ -36,42 +33,67 @@ export function FieldClient({ jobs: initialJobs }: FieldClientProps) {
   });
 
   return (
-    <div className="max-w-xl mx-auto space-y-5 pb-12">
+    <div
+      className={`max-w-xl mx-auto space-y-5 pb-16 transition-colors ${
+        outdoorHighContrast ? "font-semibold contrast-125" : ""
+      }`}
+    >
       {/* Field PWA Header */}
-      <div className="flex items-center justify-between p-4 bg-slate-900 text-white rounded-2xl shadow-lg">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
-            <Wrench className="w-5 h-5" />
+      <div className="rounded-[var(--radius-card)] bg-[var(--surface-card)] border-2 border-[var(--border-strong)] p-5 shadow-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-[var(--radius-control)] bg-[var(--accent-subtle)] text-[var(--accent-base)] flex items-center justify-center font-bold">
+              <Wrench className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-heading font-semibold text-text-primary">
+                Field Technician PWA
+              </h1>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block animate-pulse" />
+                <span className="text-caption text-text-secondary font-mono">
+                  Offline-Ready • Route Synced
+                </span>
+              </div>
+            </div>
           </div>
-          <div>
-            <h1 className="text-base font-bold">SunPower Field PWA</h1>
-            <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Offline-First (Serwist + idb synced)</span>
-            </span>
-          </div>
+
+          {/* Outdoor Sun Mode Toggle */}
+          <button
+            type="button"
+            onClick={() => setOutdoorHighContrast(!outdoorHighContrast)}
+            className={`h-11 px-3.5 rounded-[var(--radius-control)] border text-label font-medium flex items-center gap-1.5 transition-colors ${
+              outdoorHighContrast
+                ? "bg-[var(--accent-base)] text-white border-[var(--accent-base)]"
+                : "bg-[var(--surface-subtle)] text-text-primary border-[var(--border-strong)]"
+            }`}
+          >
+            <Sun className="w-4 h-4" />
+            <span className="hidden sm:inline">Outdoor Sun</span>
+          </button>
         </div>
-        <div className="text-right">
-          <span className="text-xs font-bold block">{jobs.length} Assigned</span>
-          <span className="text-[10px] text-slate-400">Today&apos;s Route</span>
+
+        <div className="mt-4 pt-3 border-t border-[var(--border-subtle)] flex items-center justify-between text-body-sm">
+          <span className="text-text-secondary">Assigned Jobs for Today</span>
+          <span className="font-mono font-semibold text-text-primary">{jobs.length} Tasks Scheduled</span>
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-2 p-1 bg-white/80 rounded-xl border border-slate-200/80 shadow-xs text-xs font-semibold">
+      {/* Filter Tabs (Big 48px touch targets) */}
+      <div className="grid grid-cols-4 gap-2 bg-[var(--surface-subtle)] p-1.5 rounded-[var(--radius-card)] border border-[var(--border-subtle)]">
         {[
           { id: "all", label: "All Tasks" },
-          { id: "install", label: "Installations" },
-          { id: "survey", label: "Site Audits" },
-          { id: "service", label: "Repairs" },
+          { id: "install", label: "Install" },
+          { id: "survey", label: "Surveys" },
+          { id: "service", label: "Service" },
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => setFilterType(tab.id)}
-            className={`flex-1 py-2 rounded-lg transition-all text-center ${
+            className={`h-11 rounded-[var(--radius-control)] text-label font-medium transition-all ${
               filterType === tab.id
-                ? "bg-amber-500 text-white shadow-sm"
-                : "text-slate-600 hover:bg-slate-100"
+                ? "bg-[var(--surface-card)] text-text-primary shadow-xs border border-[var(--border-strong)] font-semibold"
+                : "text-text-secondary hover:text-text-primary"
             }`}
           >
             {tab.label}
@@ -79,90 +101,114 @@ export function FieldClient({ jobs: initialJobs }: FieldClientProps) {
         ))}
       </div>
 
-      {/* Mobile Job Cards */}
+      {/* Mobile Job Cards (Optimized for One-Handed Field Use) */}
       <div className="space-y-4">
         {filtered.map((job) => {
           const isInstall = job.type === "install";
           const isCompleted = job.status === "completed";
+          const phoneActions = getPhoneActions(job.project?.customer?.phone_e164 || "+919876543210");
+          const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            job.site_address || "Punjab, India"
+          )}`;
 
           return (
             <div
               key={job.id}
-              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80 space-y-4 hover:border-amber-400 transition-all"
+              className="rounded-[var(--radius-card)] bg-[var(--surface-card)] border-2 border-[var(--border-subtle)] hover:border-[var(--border-strong)] p-5 space-y-4 shadow-xs transition-all"
             >
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-slate-500">
+                    <span className="font-mono text-body-sm font-semibold text-text-secondary">
                       {job.job_no}
                     </span>
-                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                    <span className="text-caption uppercase font-mono font-semibold px-2 py-0.5 rounded bg-[var(--surface-subtle)] text-text-primary border border-[var(--border-subtle)]">
                       {job.type}
                     </span>
                   </div>
-                  <h3 className="font-bold text-slate-900 text-base mt-1">
+                  <h3 className="text-title font-semibold text-text-primary mt-1.5">
                     {job.project?.customer?.name}
                   </h3>
-                  <span className="text-xs font-semibold text-amber-600 block mt-0.5">
-                    {job.project?.requested_kw} kW • {(job.project?.system_type || "on_grid").replace("_", "-")}
-                  </span>
+                  <div className="text-body-sm text-[var(--accent-base)] font-medium mt-0.5">
+                    {job.project?.requested_kw} kW System • {job.project?.system_type?.replace("_", "-")}
+                  </div>
                 </div>
-                <StatusBadge status={job.status} />
+
+                <StatusPill status={job.status} />
               </div>
 
-              {/* Location & Time */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-1.5">
+              {/* Schedule and Address Facts */}
+              <div className="rounded-[var(--radius-control)] bg-[var(--surface-subtle)] border border-[var(--border-subtle)] p-3.5 space-y-2 text-body-sm text-text-primary">
                 <div className="flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  <span className="font-medium text-slate-800">
-                    {formatIstDate(job.scheduled_start)}
+                  <Clock className="w-4 h-4 text-text-tertiary shrink-0" />
+                  <span className="font-medium">
+                    {job.scheduled_start ? formatDateTimeIST(job.scheduled_start) : "Scheduled Today"}
                   </span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Navigation className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                  <span className="leading-snug">{job.site_address}</span>
+                  <Compass className="w-4 h-4 text-text-tertiary shrink-0 mt-0.5" />
+                  <span className="text-text-secondary">
+                    {job.site_address || "Site Address on file"}
+                  </span>
                 </div>
               </div>
 
-              {/* One-touch Actions */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              {/* Quick Communication & Navigation Row */}
+              <div className="grid grid-cols-3 gap-2">
                 <a
-                  href={`tel:${job.project?.customer?.phone_e164}`}
-                  className="py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-xs text-slate-700 flex items-center justify-center gap-1.5 transition-colors"
+                  href={phoneActions.tel}
+                  className="h-12 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] hover:bg-[var(--border-subtle)] border border-[var(--border-strong)] flex items-center justify-center gap-2 text-body-sm font-semibold text-text-primary transition-colors"
                 >
-                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Call Client</span>
+                  <Phone className="w-4 h-4 text-emerald-600" />
+                  <span>Call</span>
                 </a>
-
                 <a
-                  href={`https://maps.google.com/?q=${encodeURIComponent(job.site_address)}`}
+                  href={phoneActions.whatsapp}
                   target="_blank"
                   rel="noreferrer"
-                  className="py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-xs text-slate-700 flex items-center justify-center gap-1.5 transition-colors"
+                  className="h-12 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] hover:bg-[var(--border-subtle)] border border-[var(--border-strong)] flex items-center justify-center gap-2 text-body-sm font-semibold text-text-primary transition-colors"
                 >
-                  <Navigation className="w-3.5 h-3.5 text-sky-600" />
-                  <span>GPS Navigate</span>
+                  <span>WhatsApp</span>
+                </a>
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="h-12 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] hover:bg-[var(--border-subtle)] border border-[var(--border-strong)] flex items-center justify-center gap-2 text-body-sm font-semibold text-text-primary transition-colors"
+                >
+                  <Navigation className="w-4 h-4 text-text-secondary" />
+                  <span>Map</span>
                 </a>
               </div>
 
-              {/* Main Execution Button */}
-              {isInstall && !isCompleted && (
+              {/* Primary Action Button (56px high touch target) */}
+              {isInstall ? (
                 <Link
                   href={`/field/install/${job.id}`}
-                  className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                  className={`w-full h-14 rounded-[var(--radius-control)] flex items-center justify-center gap-2 font-semibold text-body transition-colors ${
+                    isCompleted
+                      ? "bg-[var(--surface-subtle)] border border-[var(--border-strong)] text-text-primary"
+                      : "bg-[var(--accent-base)] hover:bg-[var(--accent-hover)] text-white shadow-sm"
+                  }`}
                 >
-                  <Wrench className="w-4 h-4" />
-                  <span>Open Installation & Power Test Form →</span>
+                  {isCompleted ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      <span>Review Completed Handover</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-5 h-5 text-amber-300" />
+                      <span>Execute Installation Checklist →</span>
+                    </>
+                  )}
                 </Link>
-              )}
-
-              {job.type === "survey" && !isCompleted && (
+              ) : (
                 <Link
-                  href="/surveys"
-                  className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
+                  href={`/surveys`}
+                  className="w-full h-14 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] hover:bg-[var(--border-subtle)] border border-[var(--border-strong)] flex items-center justify-center gap-2 font-semibold text-body text-text-primary transition-colors"
                 >
-                  <Compass className="w-4 h-4 text-amber-400" />
-                  <span>Perform Site Audit →</span>
+                  <span>View Survey Details →</span>
                 </Link>
               )}
             </div>

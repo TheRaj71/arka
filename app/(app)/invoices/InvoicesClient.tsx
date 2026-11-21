@@ -1,20 +1,19 @@
 "use client";
 
 import React, { useState } from "react";
-import { GlassCard } from "@/components/ui/glass-card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { formatMoney } from "@/lib/money";
-import { formatIstDate } from "@/lib/time";
+import Link from "next/link";
 import { type InvoiceItem } from "@/modules/finance/queries";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatCard } from "@/components/shared/StatCard";
+import { DataTable, type Column } from "@/components/shared/DataTable";
+import { StatusPill } from "@/components/shared/StatusPill";
+import { formatPaise, formatPaiseShorthand, formatDateIST } from "@/lib/formatters";
 import {
   FileText,
-  Search,
-  CheckCircle2,
-  Download,
   Printer,
   Calendar,
-  Layers,
-  Sparkles,
+  CheckCircle2,
+  ExternalLink,
 } from "lucide-react";
 
 interface InvoicesClientProps {
@@ -22,92 +21,196 @@ interface InvoicesClientProps {
 }
 
 export function InvoicesClient({ invoices }: InvoicesClientProps) {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   const filtered = invoices.filter((inv) => {
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchNo = inv.invoice_no.toLowerCase().includes(q);
-      const matchCust = inv.customer_name.toLowerCase().includes(q);
-      if (!matchNo && !matchCust) return false;
-    }
-    return true;
+    if (filterStatus === "all") return true;
+    return inv.status === filterStatus;
   });
+
+  const totalInvoicedPaise = invoices.reduce(
+    (acc, i) => acc + BigInt(i.total_paise || 0),
+    0n
+  );
+  const totalCgstPaise = invoices.reduce(
+    (acc, i) => acc + BigInt(i.cgst_paise || 0),
+    0n
+  );
+  const totalSgstPaise = invoices.reduce(
+    (acc, i) => acc + BigInt(i.sgst_paise || 0),
+    0n
+  );
+  const paidCount = invoices.filter((i) => i.status === "paid").length;
+
+  const columns: Column<InvoiceItem>[] = [
+    {
+      key: "invoice_no",
+      header: "Invoice #",
+      render: (item: InvoiceItem) => (
+        <span className="font-mono font-semibold text-text-primary text-body-sm">
+          {item.invoice_no}
+        </span>
+      ),
+    },
+    {
+      key: "customer_name",
+      header: "Client & Project",
+      render: (item: InvoiceItem) => (
+        <div>
+          <div className="font-medium text-text-primary text-body-sm">{item.customer_name}</div>
+          <div className="font-mono text-caption text-text-tertiary mt-0.5">
+            {item.customer_phone}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "taxable_paise",
+      header: "Taxable Value",
+      align: "right",
+      render: (item: InvoiceItem) => (
+        <span className="font-mono text-body-sm text-text-secondary tabular-nums">
+          {formatPaise(item.taxable_paise)}
+        </span>
+      ),
+    },
+    {
+      key: "cgst_paise",
+      header: "CGST (6.9%)",
+      align: "right",
+      render: (item: InvoiceItem) => (
+        <span className="font-mono text-body-sm text-text-tertiary tabular-nums">
+          {formatPaise(item.cgst_paise)}
+        </span>
+      ),
+    },
+    {
+      key: "sgst_paise",
+      header: "SGST (6.9%)",
+      align: "right",
+      render: (item: InvoiceItem) => (
+        <span className="font-mono text-body-sm text-text-tertiary tabular-nums">
+          {formatPaise(item.sgst_paise)}
+        </span>
+      ),
+    },
+    {
+      key: "total_paise",
+      header: "Total Invoice",
+      align: "right",
+      render: (item: InvoiceItem) => (
+        <span className="font-mono font-semibold text-body-sm text-text-primary tabular-nums">
+          {formatPaise(item.total_paise)}
+        </span>
+      ),
+    },
+    {
+      key: "issued_at",
+      header: "Issued Date",
+      render: (item: InvoiceItem) => (
+        <span className="text-body-sm text-text-secondary tabular-nums">
+          {item.issued_at ? formatDateIST(item.issued_at) : "Nov 2026"}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (item: InvoiceItem) => <StatusPill status={item.status} />,
+    },
+    {
+      key: "actions",
+      header: "Action",
+      render: () => (
+        <div className="flex justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="p-2 rounded-[var(--radius-control)] hover:bg-[var(--surface-subtle)] text-text-secondary hover:text-text-primary transition-colors"
+            title="Print Tax Invoice"
+          >
+            <Printer className="w-4 h-4" />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Tax Invoices & Billing
-            </h1>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-              {invoices.length} Invoices Issued
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Compliant Indian GST Tax Invoices (70% Goods @ 12% GST + 30% Services @ 18% GST = 13.8% Composite Solar Rate).
-          </p>
-        </div>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Finance", href: "/dashboard" },
+          { label: "GST Invoices" },
+        ]}
+        title="Tax Invoices & Billing Ledger"
+        description="Statutory Indian GST Tax Invoices. 70% Goods @ 12% GST + 30% Services @ 18% GST = 13.8% Composite Solar Rate."
+        actions={
+          <Link
+            href="/subsidy"
+            className="inline-flex items-center gap-2 h-11 px-4 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] hover:bg-[var(--border-subtle)] text-text-primary text-body-sm font-medium border border-[var(--border-subtle)] transition-colors"
+          >
+            <span>PM Surya Ghar Subsidy Tracker →</span>
+          </Link>
+        }
+      />
+
+      {/* KPI Stats Strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Invoiced Value"
+          value={formatPaiseShorthand(totalInvoicedPaise)}
+          helperText="Gross billing across projects"
+          variant="highlight"
+        />
+        <StatCard
+          label="CGST Output Tax"
+          value={formatPaiseShorthand(totalCgstPaise)}
+          helperText="Central GST liability @ 6.9%"
+        />
+        <StatCard
+          label="SGST Output Tax"
+          value={formatPaiseShorthand(totalSgstPaise)}
+          helperText="State GST liability @ 6.9%"
+        />
+        <StatCard
+          label="Paid Invoices"
+          value={`${paidCount} of ${invoices.length}`}
+          helperText="Fully settled accounts"
+        />
       </div>
 
-      {/* Invoices Table */}
-      <GlassCard className="overflow-hidden p-0 border border-slate-200/70">
-        <div className="p-4 bg-slate-50/90 border-b border-slate-200/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-amber-500" />
-            <h3 className="font-bold text-slate-900 text-xs">GST Tax Invoice Ledger</h3>
-          </div>
-        </div>
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2 text-body-sm font-medium text-text-secondary">
+        {[
+          { id: "all", label: `All Invoices (${invoices.length})` },
+          { id: "paid", label: `Paid (${paidCount})` },
+          { id: "sent", label: "Awaiting Payment" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setFilterStatus(tab.id)}
+            className={`px-3 py-1.5 rounded-[var(--radius-control)] transition-colors ${
+              filterStatus === tab.id
+                ? "bg-[var(--surface-subtle)] text-text-primary font-semibold border border-[var(--border-strong)]"
+                : "hover:text-text-primary"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-100/60 border-b border-slate-200/80 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
-                <th className="py-2.5 px-4">Invoice #</th>
-                <th className="py-2.5 px-4">Client Details</th>
-                <th className="py-2.5 px-4 text-right">Taxable Amount</th>
-                <th className="py-2.5 px-4 text-right">CGST (6.9%)</th>
-                <th className="py-2.5 px-4 text-right">SGST (6.9%)</th>
-                <th className="py-2.5 px-4 text-right">Total Invoice</th>
-                <th className="py-2.5 px-4">Issued Date</th>
-                <th className="py-2.5 px-4 text-right">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((inv) => (
-                <tr key={inv.id} className="hover:bg-slate-50/50">
-                  <td className="py-3 px-4 font-mono font-bold text-slate-900">{inv.invoice_no}</td>
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-900">{inv.customer_name}</div>
-                    <div className="font-mono text-[10px] text-slate-400 mt-0.5">
-                      {inv.customer_phone}
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono text-slate-700">
-                    {formatMoney(inv.taxable_paise)}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono text-slate-500">
-                    {formatMoney(inv.cgst_paise)}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono text-slate-500">
-                    {formatMoney(inv.sgst_paise)}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono font-extrabold text-slate-900 text-sm">
-                    {formatMoney(inv.total_paise)}
-                  </td>
-                  <td className="py-3 px-4 text-slate-600">{formatIstDate(inv.issued_at)}</td>
-                  <td className="py-3 px-4 text-right">
-                    <StatusBadge status={inv.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </GlassCard>
+      {/* Invoices DataTable */}
+      <div className="rounded-[var(--radius-card)] bg-[var(--surface-card)] border border-[var(--border-subtle)] overflow-hidden">
+        <DataTable
+          columns={columns}
+          data={filtered}
+          searchPlaceholder="Search invoices by client or invoice #..."
+          searchColumn="customer_name"
+          pageSize={10}
+        />
+      </div>
     </div>
   );
 }

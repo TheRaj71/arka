@@ -2,140 +2,177 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { GlassCard } from "@/components/ui/glass-card";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { formatIstDate, formatTimeAgo } from "@/lib/time";
 import { type PickListItem } from "@/modules/inventory/queries";
-import {
-  Truck,
-  Barcode,
-  Search,
-  CheckCircle2,
-  Clock,
-  ArrowRight,
-  Package,
-  Layers,
-  MapPin,
-  Calendar,
-} from "lucide-react";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatCard } from "@/components/shared/StatCard";
+import { DataTable, type Column } from "@/components/shared/DataTable";
+import { StatusPill } from "@/components/shared/StatusPill";
+import { formatDateIST } from "@/lib/formatters";
+import { Truck, Package, ArrowRight, MapPin, CheckCircle2 } from "lucide-react";
 
 interface WarehouseClientProps {
   pickLists: PickListItem[];
 }
 
 export function WarehouseClient({ pickLists }: WarehouseClientProps) {
-  const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   const filtered = pickLists.filter((pl) => {
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchProject = pl.project_no.toLowerCase().includes(q);
-      const matchCust = pl.customer_name.toLowerCase().includes(q);
-      const matchAddr = pl.delivery_address.toLowerCase().includes(q);
-      if (!matchProject && !matchCust && !matchAddr) return false;
-    }
+    if (filterStatus === "all") return true;
+    if (filterStatus === "active") return pl.status === "pending" || pl.status === "loading";
+    if (filterStatus === "in_transit") return pl.status === "in_transit";
+    if (filterStatus === "delivered") return pl.status === "delivered";
     return true;
   });
 
+  const activeCount = pickLists.filter((p) => p.status === "pending" || p.status === "loading").length;
+  const inTransitCount = pickLists.filter((p) => p.status === "in_transit").length;
+  const deliveredCount = pickLists.filter((p) => p.status === "delivered").length;
+
+  const columns: Column<PickListItem>[] = [
+    {
+      header: "Project & Order",
+      accessorKey: "project_no",
+      cell: (item) => (
+        <div>
+          <div className="font-mono font-semibold text-text-primary text-body-sm">
+            {item.project_no}
+          </div>
+          <div className="font-mono text-caption text-text-tertiary">
+            Order #{item.order_id.slice(0, 8)}
+          </div>
+        </div>
+      ),
+    },
+    {
+      header: "Client & Site Destination",
+      accessorKey: "customer_name",
+      cell: (item) => (
+        <div>
+          <div className="font-medium text-text-primary text-body-sm">{item.customer_name}</div>
+          <div className="flex items-center gap-1 text-caption text-text-secondary mt-0.5 max-w-[280px] truncate">
+            <MapPin className="w-3.5 h-3.5 shrink-0 text-text-tertiary" />
+            <span className="truncate">{item.delivery_address}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      header: "Dispatch Ref",
+      accessorKey: "dispatch_no",
+      cell: (item) => (
+        <span className="font-mono font-medium text-text-primary text-body-sm">
+          {item.dispatch_no || "DSP-2627-00001"}
+        </span>
+      ),
+    },
+    {
+      header: "Status",
+      accessorKey: "status",
+      cell: (item) => <StatusPill status={item.status} domain="inventory" />,
+    },
+    {
+      header: "Created Date",
+      accessorKey: "created_at",
+      cell: (item) => (
+        <span className="text-body-sm text-text-secondary tabular-nums">
+          {formatDateIST(item.created_at)}
+        </span>
+      ),
+    },
+    {
+      header: "Action",
+      cell: (item) => (
+        <div className="flex justify-end">
+          <Link
+            href={`/warehouse/dispatch/${item.id}`}
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] hover:bg-[var(--border-subtle)] text-text-primary text-body-sm font-medium border border-[var(--border-subtle)] transition-colors"
+          >
+            <span>Scan Station</span>
+            <ArrowRight className="w-3.5 h-3.5 text-text-secondary" />
+          </Link>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Warehouse Fulfilment & QR Dispatch
-            </h1>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-              {pickLists.length} Pick Lists
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Golden Thread Step 5: Barcode/QR scanning of serialized panels and inverters. Linking hardware to customer asset passports.
-          </p>
-        </div>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Operations", href: "/dashboard" },
+          { label: "Warehouse & Fulfilment" },
+        ]}
+        title="Warehouse & Dispatch Station"
+        description="Barcode and QR scanning station for serialized solar hardware. Links serial units to customer asset passports."
+        actions={
+          <Link
+            href="/inventory"
+            className="inline-flex items-center gap-2 h-11 px-4 rounded-[var(--radius-control)] bg-[var(--surface-subtle)] hover:bg-[var(--border-subtle)] text-text-primary text-body-sm font-medium border border-[var(--border-subtle)] transition-colors"
+          >
+            <Package className="w-4 h-4 text-text-secondary" />
+            <span>Stock Catalogue & Inwarding</span>
+          </Link>
+        }
+      />
 
-        <Link
-          href="/inventory"
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow-sm transition-all"
-        >
-          <Package className="w-4 h-4 text-amber-400" />
-          <span>Stock Catalogue & Inwarding →</span>
-        </Link>
+      {/* KPI Stats Strip */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="Active Pick-Lists"
+          value={activeCount}
+          helperText="Ready for staging & QR scan"
+          variant="highlight"
+        />
+        <StatCard
+          label="In Transit (En Route)"
+          value={inTransitCount}
+          helperText="Vehicles moving to site"
+        />
+        <StatCard
+          label="Delivered & Warranted"
+          value={deliveredCount}
+          helperText="Asset passports activated"
+        />
+        <StatCard
+          label="Total Fulfilment Runs"
+          value={pickLists.length}
+          helperText="All tracked dispatches"
+        />
       </div>
 
-      {/* Pick-Lists & Dispatch Runs Table */}
-      <GlassCard className="overflow-hidden p-0 border border-slate-200/70">
-        <div className="p-4 bg-slate-50/90 border-b border-slate-200/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Truck className="w-4 h-4 text-amber-500" />
-            <h3 className="font-bold text-slate-900 text-xs">
-              Active Pick-Lists & Dispatch Scanning Runs
-            </h3>
-          </div>
-          <span className="text-[10px] text-slate-500">
-            Automated generation upon 50% advance payment
-          </span>
-        </div>
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2 text-body-sm font-medium text-text-secondary">
+        {[
+          { id: "all", label: `All Shipments (${pickLists.length})` },
+          { id: "active", label: `Ready to Scan (${activeCount})` },
+          { id: "in_transit", label: `In Transit (${inTransitCount})` },
+          { id: "delivered", label: `Delivered (${deliveredCount})` },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setFilterStatus(tab.id)}
+            className={`px-3 py-1.5 rounded-[var(--radius-control)] transition-colors ${
+              filterStatus === tab.id
+                ? "bg-[var(--surface-subtle)] text-text-primary font-semibold border border-[var(--border-strong)]"
+                : "hover:text-text-primary"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-100/60 border-b border-slate-200/80 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
-                <th className="py-2.5 px-4">Project & Order</th>
-                <th className="py-2.5 px-4">Client & Site Destination</th>
-                <th className="py-2.5 px-4">Dispatch Reference</th>
-                <th className="py-2.5 px-4">Pick Status</th>
-                <th className="py-2.5 px-4">Created Date</th>
-                <th className="py-2.5 px-4 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((pl) => (
-                <tr key={pl.id} className="hover:bg-slate-50/50">
-                  <td className="py-3 px-4">
-                    <div className="font-mono font-bold text-slate-900">{pl.project_no}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
-                      Order: {pl.order_id.slice(0, 8)}...
-                    </div>
-                  </td>
-
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-900">{pl.customer_name}</div>
-                    <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
-                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                      <span className="truncate max-w-[240px]">{pl.delivery_address}</span>
-                    </div>
-                  </td>
-
-                  <td className="py-3 px-4 font-mono font-bold text-amber-700">
-                    {pl.dispatch_no || "DSP-2627-00001"}
-                  </td>
-
-                  <td className="py-3 px-4">
-                    <StatusBadge status={pl.status} />
-                  </td>
-
-                  <td className="py-3 px-4 text-slate-500">{formatIstDate(pl.created_at)}</td>
-
-                  <td className="py-3 px-4 text-right">
-                    <Link
-                      href={`/warehouse/dispatch/${pl.dispatch_id || "disp-1"}`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-sm transition-all"
-                    >
-                      <Barcode className="w-3.5 h-3.5" />
-                      <span>Start QR Scan</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </GlassCard>
+      {/* Dispatch Runs Table */}
+      <div className="rounded-[var(--radius-card)] bg-[var(--surface-card)] border border-[var(--border-subtle)] overflow-hidden">
+        <DataTable
+          columns={columns}
+          data={filtered}
+          searchPlaceholder="Search by project, client, or site..."
+          searchColumn="customer_name"
+          pageSize={10}
+        />
+      </div>
     </div>
   );
 }

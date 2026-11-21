@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { connection } from "next/server";
 import { getIstRange } from "@/lib/time";
 
 export interface DashboardData {
@@ -48,6 +49,7 @@ export interface DashboardData {
 }
 
 export async function getDashboardData(range: "today" | "week" | "month" = "today"): Promise<DashboardData> {
+  await connection();
   const db = supabaseAdmin();
   const istRange = getIstRange(range);
 

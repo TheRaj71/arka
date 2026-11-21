@@ -1,26 +1,192 @@
 @import "tailwindcss";
+@import "../src/styles/tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@layer base {
+  * {
+    border-color: var(--border-subtle);
+  }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  body {
+    background-color: var(--surface-page);
+    color: var(--text-primary);
+    font-feature-settings: "cv11", "ss01";
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  /* Accessible focus indicators */
+  :focus-visible {
+    outline: 2px solid var(--accent-base);
+    outline-offset: 2px;
+  }
+
+  /* Tabular Numerals for Monospace Precision */
+  .tabular-nums,
+  [data-tabular="true"] {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Typography Hierarchy Scale */
+.text-display {
+  font-size: 2rem; /* 32px */
+  line-height: 2.5rem; /* 40px */
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+@media (max-width: 640px) {
+  .text-display {
+    font-size: 1.75rem; /* 28px */
+    line-height: 2.25rem; /* 36px */
+  }
+}
+
+.text-title {
+  font-size: 1.5rem; /* 24px */
+  line-height: 2rem; /* 32px */
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.text-heading {
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.75rem; /* 28px */
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.text-body {
+  font-size: 1rem; /* 16px */
+  line-height: 1.5rem; /* 24px */
+  font-weight: 400;
+}
+
+.text-body-sm {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.25rem; /* 20px */
+  font-weight: 400;
+}
+
+.text-label {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.25rem; /* 20px */
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.text-caption {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.125rem; /* 18px */
+  color: var(--text-muted);
+}
+
+/* Surface Utility Classes */
+.bg-surface-page {
+  background-color: var(--surface-page);
+}
+
+.bg-surface-card {
+  background-color: var(--surface-card);
+}
+
+.bg-surface-subtle {
+  background-color: var(--surface-subtle);
+}
+
+.border-subtle {
+  border-color: var(--border-subtle);
+}
+
+.border-strong {
+  border-color: var(--border-strong);
+}
+
+/* Restrained Card Elevation (No Heavy Drop Shadows) */
+.card-surface {
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+/* Tactile Button Standards */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.75rem;
+  padding: 0 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  background-color: var(--accent-base);
+  color: var(--text-inverse);
+  transition: background-color 150ms ease-out, transform 100ms ease-out;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+}
+
+.btn-primary:active {
+  background-color: var(--accent-active);
+  transform: translateY(1px);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.75rem;
+  padding: 0 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-card);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-secondary:hover {
+  background-color: var(--surface-hover);
+}
+
+/* Form Input Standard (44px min desktop, 52px mobile) */
+.input-standard {
+  height: var(--input-height-desktop);
+  padding: 0 0.875rem;
+  font-size: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface-card);
+  color: var(--text-primary);
+  width: 100%;
+  transition: border-color 150ms ease-out;
+}
+
+@media (max-width: 640px) {
+  .input-standard {
+    height: var(--input-height-mobile);
+  }
+}
+
+.input-standard:focus {
+  border-color: var(--accent-base);
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent-base);
+}
+
+/* Technician Field Target (56px for rooftop gloves) */
+.field-target-touch {
+  min-height: var(--field-touch-target);
+  font-size: 1.125rem;
 }
