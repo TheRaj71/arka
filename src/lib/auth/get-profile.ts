@@ -89,12 +89,12 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
     }
 
     // Determine initial role
-    const isBootstrap =
-      Boolean(
-        email &&
-        process.env.BOOTSTRAP_DIRECTOR_EMAIL &&
-        email.toLowerCase() === process.env.BOOTSTRAP_DIRECTOR_EMAIL.toLowerCase()
-      );
+    const bootstrapEmails = (process.env.BOOTSTRAP_DIRECTOR_EMAIL || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    const isBootstrap = Boolean(email && bootstrapEmails.includes(email.toLowerCase()));
 
     const metaRole = clerkUser.publicMetadata?.role as AppRole | undefined;
     const initialRole: AppRole | null = isBootstrap ? "director" : (metaRole ?? null);
